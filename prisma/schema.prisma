@@ -1,0 +1,41 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // or "sqlite" for quick local testing
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String?  // Stores hashed passwords; Nullable for guest users
+  name      String?
+  year      Int      @default(1)
+  createdAt DateTime @default(now())
+  notes     Note[]
+  progress  TopicProgress[]
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  topicId   String
+  content   String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  updatedAt DateTime @updatedAt
+}
+
+model TopicProgress {
+  id          String   @id @default(cuid())
+  topicId     String
+  isCompleted Boolean  @default(false)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  @@unique([userId, topicId])
+}
