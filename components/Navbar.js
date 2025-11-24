@@ -53,6 +53,63 @@ export default function Navbar() {
     }
   };
 
+  // Auth pages where navigation should be disabled
+  const onAuthPage = pathname?.startsWith('/login') || pathname?.startsWith('/register') || pathname?.startsWith('/onboard');
+
+  // helper to render desktop nav item (disabled when onAuthPage)
+  function NavItem({ item }) {
+    const isActive = pathname === item.path;
+    const baseClasses = `px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200`;
+    const activeClasses = 'bg-white text-teal-700 shadow-sm ring-1 ring-black/5';
+    const inactiveClasses = 'text-slate-500 hover:text-teal-600 hover:bg-white/50';
+
+    if (onAuthPage) {
+      // render a non-clickable disabled element
+      return (
+        <div
+          aria-disabled="true"
+          className={`${baseClasses} text-slate-300 opacity-60 cursor-not-allowed select-none`}
+          title="Navigation disabled while on auth page"
+        >
+          {item.label}
+        </div>
+      );
+    }
+
+    return (
+      <Link
+        href={item.path}
+        className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}
+      >
+        {item.label}
+      </Link>
+    );
+  }
+
+  // helper for mobile bottom nav: disable when onAuthPage
+  function MobileNavItem({ item }) {
+    const isActive = pathname === item.path;
+    if (onAuthPage) {
+      return (
+        <div className="flex flex-col items-center p-1 min-w-[60px] text-slate-300 opacity-60 cursor-not-allowed select-none">
+          <item.icon size={22} className="mb-1" />
+          <span className="text-[10px] font-medium">{item.label}</span>
+        </div>
+      );
+    }
+
+    return (
+      <Link
+        key={item.label}
+        href={item.path}
+        className={`flex flex-col items-center p-1 min-w-[60px] transition-colors ${isActive ? 'text-teal-600' : 'text-slate-400'}`}
+      >
+        <item.icon size={22} className={`mb-1 ${isActive ? 'fill-teal-50 stroke-teal-600' : ''}`} />
+        <span className="text-[10px] font-medium">{item.label}</span>
+      </Link>
+    );
+  }
+
   return (
     <>
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-teal-100 text-slate-800 shadow-sm">
@@ -70,41 +127,35 @@ export default function Navbar() {
 
             {/* Desktop Nav */}
             <div className="hidden md:flex items-center bg-slate-100/50 p-1 rounded-full border border-slate-200">
-              {navItems.map((item) => {
-                const isActive = pathname === item.path;
-                return (
-                  <Link
-                    key={item.id}
-                    href={item.path}
-                    className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
-                      isActive
-                        ? 'bg-white text-teal-700 shadow-sm ring-1 ring-black/5'
-                        : 'text-slate-500 hover:text-teal-600 hover:bg-white/50'
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
+              {navItems.map((item) => (
+                <NavItem item={item} key={item.id} />
+              ))}
             </div>
 
             <div className="flex items-center gap-3">
               {/* show profile or logout */}
               {sessionUser ? (
                 <>
-                  <button onClick={() => router.push('/profile')} className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-teal-100 bg-teal-50">
-                    <UserCircle size={16} className="text-teal-600" />
-                    <span className="text-xs font-semibold text-teal-800">{sessionUser.name || 'Profile'}</span>
+                  <button onClick={() => router.push('/profile')} className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-teal-100 ${onAuthPage ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-teal-50'}`}>
+                    <UserCircle size={16} className={onAuthPage ? 'text-slate-400' : 'text-teal-600'} />
+                    <span className={`text-xs font-semibold ${onAuthPage ? 'text-slate-400' : 'text-teal-800'}`}>{sessionUser.name || 'Profile'}</span>
                   </button>
 
-                  <button onClick={handleLogout} className="px-3 py-1.5 rounded-full border border-red-100 bg-red-50 text-red-600 text-sm hidden sm:inline">
+                  <button
+                    onClick={handleLogout}
+                    className={`px-3 py-1.5 rounded-full border border-red-100 bg-red-50 text-red-600 text-sm hidden sm:inline ${onAuthPage ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    aria-disabled={onAuthPage}
+                  >
                     Logout
                   </button>
                 </>
               ) : (
-                <button onClick={() => router.push('/login')} className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-teal-100 bg-teal-50">
-                  <UserCircle size={16} className="text-teal-600" />
-                  <span className="text-xs font-semibold text-teal-800">Profile</span>
+                <button
+                  onClick={() => router.push('/login')}
+                  className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-teal-100 ${onAuthPage ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-teal-50'}`}
+                >
+                  <UserCircle size={16} className={onAuthPage ? 'text-slate-400' : 'text-teal-600'} />
+                  <span className={`text-xs font-semibold ${onAuthPage ? 'text-slate-400' : 'text-teal-800'}`}>Profile</span>
                 </button>
               )}
             </div>
@@ -114,19 +165,9 @@ export default function Navbar() {
 
       {/* Mobile Bottom Nav */}
       <div className="md:hidden flex justify-around bg-white/95 backdrop-blur-md border-t border-slate-100 py-3 fixed bottom-0 w-full z-50 pb-safe">
-        {mobileItems.map((item) => {
-          const isActive = pathname === item.path;
-          return (
-            <Link
-              key={item.label}
-              href={item.path}
-              className={`flex flex-col items-center p-1 min-w-[60px] transition-colors ${isActive ? 'text-teal-600' : 'text-slate-400'}`}
-            >
-              <item.icon size={22} className={`mb-1 ${isActive ? 'fill-teal-50 stroke-teal-600' : ''}`} />
-              <span className="text-[10px] font-medium">{item.label}</span>
-            </Link>
-          );
-        })}
+        {mobileItems.map((item) => (
+          <MobileNavItem key={item.label} item={item} />
+        ))}
       </div>
     </>
   );

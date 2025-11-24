@@ -4,11 +4,13 @@ export async function POST() {
   try {
     const res = NextResponse.json({ ok: true, message: 'Logged out successfully' });
 
-    // Clear the cookie by setting it to empty + expired
     res.cookies.set('app_session', '', {
       httpOnly: true,
-      expires: new Date(0),
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
       path: '/',
+      maxAge: 0,           // IMPORTANT
+      expires: new Date(0) // also clear for older browsers
     });
 
     return res;
