@@ -221,7 +221,7 @@ export default function Navbar() {
                 <div className={`hidden sm:flex items-center gap-2 ${onAuthPage ? 'text-slate-400' : 'text-teal-900'}`}>
                    <div className="flex flex-col items-start leading-none">
                       <span className="text-xs font-bold max-w-[100px] truncate">
-                        {sessionUser ? (sessionUser.name || 'Account') : 'Menu'}
+                        {sessionUser ? (sessionUser.name || 'Account') : 'Log In'}
                       </span>
                    </div>
                    <ChevronDown size={14} className={`text-slate-400 ${menuOpen ? 'rotate-180' : ''} transition-transform duration-200`} />
