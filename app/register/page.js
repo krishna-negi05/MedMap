@@ -106,7 +106,7 @@ export default function RegisterPage() {
             <div className="flex gap-3 mb-6">
               {/* Google */}
               <button
-                onClick={() => socialSignUp('google')}
+                onClick={() => window.location.href = "/api/auth/google"}
                 className="flex-1 min-w-0 flex items-center justify-center py-2.5 border border-slate-200 rounded-xl hover:bg-white transition-all shadow-sm cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform"
                 aria-label="Sign up with Google"
                 title="Sign up with Google"

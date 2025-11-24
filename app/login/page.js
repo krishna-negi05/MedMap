@@ -214,7 +214,7 @@ export default function LoginView() {
               {/* Social Login (mobile-friendly: icons always visible, labels on sm+) */}
               <div className="flex gap-3 mb-4">
                 <button
-                  onClick={() => socialSignIn('google')}
+                  onClick={() => window.location.href = "/api/auth/google"}
                   className="flex-1 min-w-0 flex items-center justify-center py-2.5 border border-slate-200 rounded-xl hover:bg-white transition-all shadow-sm cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform"
                   aria-label="Sign in with Google"
                   title="Sign in with Google"
