@@ -1,64 +1,22 @@
-import prisma from '../../../../lib/prisma';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import bcrypt from 'bcryptjs';
+import { findUserByEmail, verifyPassword, generateJWT } from '../../../../lib/auth';
 
-export async function POST(request) {
+export async function POST(req) {
   try {
-    const { email, password, name, mode } = await request.json();
+    const { email, password } = await req.json();
+    if (!email || !password) return NextResponse.json({ error: 'Email and password required' }, { status: 400 });
 
-    if (!email || !password) {
-      return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
-    }
+    const user = await findUserByEmail(email);
+    if (!user) return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
 
-    // 1. Find user
-    let user = await prisma.user.findUnique({ where: { email } });
+    const ok = await verifyPassword(user, password);
+    if (!ok) return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
 
-    // 2. Handle Sign Up (User should NOT exist)
-    if (mode === 'signup') {
-        if (user) {
-            return NextResponse.json({ error: 'Account already exists. Please Login.' }, { status: 400 });
-        }
-        const hashedPassword = await bcrypt.hash(password, 10);
-        user = await prisma.user.create({
-            data: {
-                email,
-                password: hashedPassword,
-                name: name || email.split('@')[0],
-            },
-        });
-    } 
-    // 3. Handle Login (User MUST exist)
-    else {
-        if (!user) {
-            return NextResponse.json({ error: 'Account not found. Please Sign Up.' }, { status: 404 });
-        }
-        // Check password (if account has one)
-        if (user.password) {
-            const isMatch = await bcrypt.compare(password, user.password);
-            if (!isMatch) {
-                return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
-            }
-        } else {
-            // Legacy or Guest account trying to add password logic later (optional handling)
-            // For now, simply update with new password for seamless migration
-            const hashedPassword = await bcrypt.hash(password, 10);
-            await prisma.user.update({ where: { id: user.id }, data: { password: hashedPassword }});
-        }
-    }
-
-    // 4. Create Persistent Session
-    cookies().set('userId', user.id, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 60 * 60 * 24 * 30, // 30 Days
-      path: '/',
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Auth Error:", error);
-    return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
+    const token = generateJWT(user);
+    const res = NextResponse.json({ ok: true, user: { id: user.id, email: user.email, name: user.name } });
+    res.cookies.set('app_session', token, { httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 7 });
+    return res;
+  } catch (err) {
+    return NextResponse.json({ error: 'Login error' }, { status: 500 });
   }
 }

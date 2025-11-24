@@ -11,7 +11,7 @@ generator client {
 
 datasource db {
   provider = "postgresql" // or "sqlite" for quick local testing
-  url      = env("DATABASE_URL")
+  //url      = env("DATABASE_URL")
 }
 
 model User {
@@ -23,6 +23,10 @@ model User {
   createdAt DateTime @default(now())
   notes     Note[]
   progress  TopicProgress[]
+  role      String
+  avatar    String?
+  resetToken        String?
+  resetTokenExpiry  DateTime?
 }
 
 model Note {
