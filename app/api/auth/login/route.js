@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { findUserByEmail, verifyPassword, generateJWT } from '../../../../../lib/auth';
+import { findUserByEmail, verifyPassword, generateJWT } from '../../../../lib/auth';
 
 export async function POST(req) {
   try {

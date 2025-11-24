@@ -19,7 +19,6 @@ import {
   CreditCard,
   Moon,
   MessageSquare,
-  FileText,
   HelpCircle,
   Shield
 } from 'lucide-react';
@@ -54,7 +53,7 @@ export default function Navbar() {
   const menuRef = useRef(null);
   const btnRef = useRef(null);
 
-  // --- Auth & Session Logic (Same as before) ---
+  // --- Auth & Session Logic ---
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -137,7 +136,7 @@ export default function Navbar() {
     );
   }
 
-  // Helper for menu items to reduce code repetition
+  // Helper for menu items
   function MenuItem({ icon: Icon, label, onClick, href, className = "", badge }) {
     const content = (
       <div className={`flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm transition-colors ${className || 'text-slate-600 hover:bg-slate-50 hover:text-teal-700'}`}>
@@ -173,7 +172,7 @@ export default function Navbar() {
             
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2 cursor-pointer group">
-              <div className="bg-gradient-to-tr from-teal-500 to-cyan-400 p-2 rounded-lg shadow-lg shadow-teal-200/50">
+              <div className="bg-gradient-to-tr from-teal-500 to-cyan-400 p-2 rounded-lg shadow-lg shadow-teal-200/50 transition-transform group-hover:scale-105">
                 <Activity className="h-5 w-5 text-white" />
               </div>
               <div className="flex flex-col">
@@ -192,36 +191,51 @@ export default function Navbar() {
             {/* Right Side Actions */}
             <div className="flex items-center gap-3 relative">
               
-              {/* Profile Trigger Button */}
+              {/* Profile Trigger Button (Optimized) */}
               <button
                 ref={btnRef}
                 onClick={() => { if (!onAuthPage) setMenuOpen(v => !v); }}
-                className={`flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-full border border-teal-100 transition-all ${
-                  onAuthPage ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-teal-50 cursor-pointer hover:shadow hover:bg-white'
-                } ${menuOpen ? 'ring-2 ring-teal-100 bg-white' : ''}`}
+                disabled={onAuthPage}
+                className={`
+                  group flex items-center gap-2 transition-all outline-none
+                  ${onAuthPage ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                  /* Mobile: Simple circle */
+                  p-0.5 rounded-full
+                  /* Desktop: Pill shape with border & background */
+                  sm:p-1.5 sm:pl-1.5 sm:pr-3 sm:bg-teal-50 sm:border sm:border-teal-100 sm:hover:bg-white sm:hover:shadow-sm
+                  ${menuOpen ? 'ring-2 ring-teal-100 ring-offset-2' : ''}
+                `}
               >
-                {sessionUser?.avatar ? (
-                  <img src={sessionUser.avatar} alt="avatar" className="w-8 h-8 sm:w-6 sm:h-6 rounded-full object-cover" />
-                ) : (
-                  <div className="bg-teal-100 p-1 rounded-full">
-                    <UserCircle size={20} className="text-teal-600" />
-                  </div>
-                )}
+                {/* Avatar Image */}
+                <div className="relative h-9 w-9 sm:h-8 sm:w-8 rounded-full overflow-hidden border border-white shadow-sm ring-1 ring-slate-100">
+                  {sessionUser?.avatar ? (
+                    <img src={sessionUser.avatar} alt="Profile" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full bg-teal-100 flex items-center justify-center">
+                      <UserCircle size={20} className="text-teal-600" />
+                    </div>
+                  )}
+                </div>
                 
-                <span className={`hidden sm:block text-xs font-semibold ${onAuthPage ? 'text-slate-400' : 'text-teal-800'}`}>
-                   {sessionUser ? (sessionUser.name?.split(' ')[0] || 'Account') : 'Menu'}
-                </span>
-                <ChevronDown size={14} className={`hidden sm:block text-slate-400 ${menuOpen ? 'rotate-180' : ''} transition-transform`} />
+                {/* Text Label - Hidden on Mobile, Visible on Desktop */}
+                <div className={`hidden sm:flex items-center gap-2 ${onAuthPage ? 'text-slate-400' : 'text-teal-900'}`}>
+                   <div className="flex flex-col items-start leading-none">
+                      <span className="text-xs font-bold max-w-[100px] truncate">
+                        {sessionUser ? (sessionUser.name || 'Account') : 'Menu'}
+                      </span>
+                   </div>
+                   <ChevronDown size={14} className={`text-slate-400 ${menuOpen ? 'rotate-180' : ''} transition-transform duration-200`} />
+                </div>
               </button>
 
               {/* ------------------------------------------------ */}
-              {/* IMPROVED POPUP MENU              */}
+              {/* POPUP MENU                                     */}
               {/* ------------------------------------------------ */}
               {menuOpen && (
                 <div
                   ref={menuRef}
                   role="menu"
-                  className="absolute right-0 top-full mt-2 w-80 origin-top-right bg-white rounded-2xl shadow-xl ring-1 ring-black/5 focus:outline-none animate-in fade-in slide-in-from-top-2 z-50 overflow-hidden"
+                  className="absolute right-0 top-full mt-2 w-72 sm:w-80 origin-top-right bg-white rounded-2xl shadow-xl ring-1 ring-black/5 focus:outline-none animate-in fade-in slide-in-from-top-2 z-50 overflow-hidden"
                 >
                   {/* --- Header Section --- */}
                   <div className="p-4 bg-gradient-to-b from-slate-50 to-white border-b border-slate-100">
@@ -308,12 +322,12 @@ export default function Navbar() {
                     
                     {sessionUser && (
                       <div className="mt-1 pt-1 border-t border-slate-100">
-                         <MenuItem 
+                          <MenuItem 
                             onClick={handleLogout} 
                             icon={LogOut} 
                             label="Sign Out" 
                             className="text-red-600 hover:bg-red-50 hover:text-red-700" 
-                         />
+                          />
                       </div>
                     )}
                   </div>

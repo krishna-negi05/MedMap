@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Activity, ArrowRight, Mail, Lock, CheckCircle2, Loader2 } from 'lucide-react';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Activity, ArrowRight, Mail, Lock, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 
 /* ---------- social icons ---------- */
 const GoogleIcon = () => (
@@ -19,19 +19,20 @@ const FacebookIcon = () => (
   </svg>
 );
 
-const InstagramIcon = () => (
-  <svg className="w-5 h-5 text-[#E4405F]" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+const XIcon = () => (
+  <svg className="w-5 h-5 text-slate-900" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
   </svg>
 );
 
-/* ---------- component ---------- */
-export default function LoginView() {
+/* ---------- Inner Form Component ---------- */
+function LoginForm() {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [sessionUser, setSessionUser] = useState(undefined);
+  
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotInfo, setForgotInfo] = useState(null);
@@ -39,8 +40,26 @@ export default function LoginView() {
   const [newPassword, setNewPassword] = useState('');
 
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  // check session on mount
+  /* --- 1. HANDLE URL ERRORS (Logic Updated) --- */
+  useEffect(() => {
+    const errorType = searchParams.get('error');
+    if (errorType) {
+      if (errorType === 'account_not_found') {
+        // FIXED: Generic message works for Google, Twitter, or Email
+        setError('No account found. Please Create an Account first.');
+      } else if (errorType === 'oauth_failed') {
+        setError('Sign-In failed. Please try again.');
+      } else if (errorType === 'token_failed') {
+        setError('Authentication token missing. Please try again.');
+      } else if (errorType === 'server_error') {
+        setError('Internal server error. Please try later.');
+      }
+    }
+  }, [searchParams]);
+
+  /* --- Check Session --- */
   useEffect(() => {
     let active = true;
     (async () => {
@@ -57,9 +76,12 @@ export default function LoginView() {
     return () => { active = false; };
   }, []);
 
-  /* ---------- handlers ---------- */
+  /* --- Handlers --- */
 
-  // LOGIN
+  const socialSignIn = (provider) => {
+    window.location.href = `/api/auth/${provider}?intent=login`;
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -85,7 +107,6 @@ export default function LoginView() {
     }
   };
 
-  // LOGOUT
   const handleLogout = async () => {
     setLoading(true);
     try {
@@ -99,7 +120,6 @@ export default function LoginView() {
     }
   };
 
-  // FORGOT: request reset token
   const handleForgot = async (e) => {
     e?.preventDefault();
     setLoading(true);
@@ -113,7 +133,7 @@ export default function LoginView() {
       });
       const data = await res.json();
       if (res.ok) {
-        setForgotInfo(data); // dev: may contain token to test reset
+        setForgotInfo(data); 
       } else {
         setError(data.error || 'Unable to request reset');
       }
@@ -125,7 +145,6 @@ export default function LoginView() {
     }
   };
 
-  // RESET using token
   const handleReset = async (e) => {
     e?.preventDefault();
     setLoading(true);
@@ -151,15 +170,11 @@ export default function LoginView() {
     }
   };
 
-  // Social stub
-  const socialSignIn = (provider) => {
-    window.location.href = `/api/auth/oauth/${provider}`;
-  };
-
-  /* ---------- UI ---------- */
+  /* --- UI Render --- */
   return (
     <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-teal-50 via-slate-50 to-white p-4">
       <div className="relative w-full max-w-5xl min-h-[640px] bg-white/40 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 flex overflow-hidden transition-all duration-500">
+        
         {/* Left hero */}
         <div className="hidden md:flex w-1/2 bg-slate-900 text-white p-12 flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500 rounded-full blur-[100px] opacity-20 -mr-16 -mt-16 animate-pulse"></div>
@@ -192,6 +207,7 @@ export default function LoginView() {
         {/* Right side - forms */}
         <div className="w-full md:w-1/2 p-8 md:p-12 flex flex-col justify-start bg-white/60 relative">
           <div className="max-w-md mx-auto w-full">
+            
             {/* Session quick area */}
             {sessionUser && (
               <div className="mb-4 flex items-center justify-between bg-slate-50 p-3 rounded-lg border">
@@ -211,10 +227,10 @@ export default function LoginView() {
               <h2 className="text-2xl font-bold text-slate-800 mb-2">Welcome Back</h2>
               <p className="text-slate-500 mb-4">Sign in to your MedMap account.</p>
 
-              {/* Social Login (mobile-friendly: icons always visible, labels on sm+) */}
+              {/* Social Login */}
               <div className="flex gap-3 mb-4">
                 <button
-                  onClick={() => window.location.href = "/api/auth/google"}
+                  onClick={() => socialSignIn('google')}
                   className="flex-1 min-w-0 flex items-center justify-center py-2.5 border border-slate-200 rounded-xl hover:bg-white transition-all shadow-sm cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform"
                   aria-label="Sign in with Google"
                   title="Sign in with Google"
@@ -234,13 +250,13 @@ export default function LoginView() {
                 </button>
 
                 <button
-                  onClick={() => socialSignIn('instagram')}
+                  onClick={() => socialSignIn('twitter')}
                   className="flex-1 min-w-0 flex items-center justify-center py-2.5 border border-slate-200 rounded-xl hover:bg-white transition-all shadow-sm cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform"
-                  aria-label="Sign in with Instagram"
-                  title="Sign in with Instagram"
+                  aria-label="Sign in with X"
+                  title="Sign in with X"
                   type="button"
                 >
-                  <InstagramIcon />
+                  <XIcon />
                 </button>
               </div>
 
@@ -250,6 +266,15 @@ export default function LoginView() {
               </div>
 
               <form onSubmit={handleLogin} className="space-y-4">
+                
+                {/* --- 3. ERROR DISPLAY (Red Box) --- */}
+                {error && (
+                  <div className="flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg text-sm border border-red-100 animate-in fade-in slide-in-from-top-1">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
                 <div>
                   <label className="text-xs font-bold text-slate-600 uppercase tracking-wide">Email</label>
                   <div className="relative mt-2">
@@ -265,8 +290,6 @@ export default function LoginView() {
                     <input value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} type="password" required className="w-full pl-12 pr-4 py-3 bg-white border rounded-xl" placeholder="••••••••" />
                   </div>
                 </div>
-
-                {error && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-lg">{error}</p>}
 
                 <button type="submit" disabled={loading} className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform">
                   {loading ? <Loader2 className="animate-spin" /> : 'Sign In'}
@@ -284,7 +307,7 @@ export default function LoginView() {
               {showForgot && (
                 <div className="mt-4 p-4 border rounded-lg bg-white/60">
                   <form onSubmit={handleForgot} className="space-y-3">
-                    <div className="text-sm text-slate-600">Enter your email and we'll send a reset token (dev: token may be returned by API).</div>
+                    <div className="text-sm text-slate-600">Enter your email and we'll send a reset token.</div>
                     <input type="email" required value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} placeholder="your@email.com" className="w-full py-2 px-3 border rounded" />
                     <div className="flex gap-2">
                       <button disabled={loading} className="px-3 py-1.5 rounded bg-teal-600 text-white cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform">Request Reset</button>
@@ -296,7 +319,7 @@ export default function LoginView() {
                         <div className="text-xs text-slate-700">Dev token (in prod you'll receive an email):</div>
                         <div className="text-xs font-mono break-all">{forgotInfo.token}</div>
 
-                        <div className="mt-2 text-xs">Use the token below to reset (paste it then set a new password):</div>
+                        <div className="mt-2 text-xs">Use the token below to reset:</div>
                         <input placeholder="reset token" value={resetToken} onChange={e => setResetToken(e.target.value)} className="w-full mt-1 py-2 px-3 border rounded text-sm" />
                         <input placeholder="new password" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full mt-1 py-2 px-3 border rounded text-sm" />
                         <div className="flex gap-2 mt-2">
@@ -310,7 +333,6 @@ export default function LoginView() {
               )}
             </div>
 
-            {/* Footer small helper */}
             <div className="mt-6 text-center text-xs text-slate-500">
               <div>By using MedMap you agree to our Terms & Privacy.</div>
             </div>
@@ -318,5 +340,18 @@ export default function LoginView() {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ---------- Main Export (Wrapped in Suspense) ---------- */
+export default function LoginView() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }
