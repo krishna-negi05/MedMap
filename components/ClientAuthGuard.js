@@ -8,7 +8,8 @@ const PUBLIC_PATHS = [
   '/login', 
   '/register', 
   '/', 
-  '/onboard'
+  '/onboard',
+    '/reset-password'
 ];
 
 export default function ClientAuthGuard({ children }) {
