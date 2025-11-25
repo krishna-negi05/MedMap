@@ -77,7 +77,7 @@ export async function POST(req) {
       body: JSON.stringify({
         model: selectedModel,
         messages: messages,
-        response_format: { type: "json_object" }
+        //response_format: { type: "json_object" }
       })
     });
 

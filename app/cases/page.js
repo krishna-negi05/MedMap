@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { RefreshCw, Sparkles, Activity, CheckCircle2, AlertTriangle, ArrowRight, Save, FolderOpen, Clock, Trash2, X, Loader2, FileText, HeartPulse, Wind, Droplets } from 'lucide-react';
+import { RefreshCw, Sparkles, Activity, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft, Save, FolderOpen, Clock, Trash2, X, Loader2, FileText, HeartPulse, Wind, Droplets } from 'lucide-react';
 import { callGemini } from '../../lib/gemini';
 import { FEATURE_MODELS } from '../../lib/ai-config'; 
 
@@ -112,7 +112,30 @@ export default function CasesPage() {
     try { 
         // 1. Generate Patient
         setLoadingStep('Generating Patient Profile...');
-        const vignettePrompt = `Generate a realistic clinical patient vignette for a medical emergency. Difficulty: ${defaultDiff}. Include BP, HR, RR, SpO2, Temp. Output strictly JSON.`;
+        
+        const vignettePrompt = `
+          Generate a realistic clinical clinical case scenario for an Indian Medical Student (MBBS level).
+          Difficulty: ${defaultDiff}.
+          
+          CONTEXT:
+          - Focus on conditions common in India (e.g., Tuberculosis, Malaria, Dengue, Enteric Fever, OP Poisoning, Snake Bite, RHD, COPD).
+          - Can also include standard emergencies (MI, Stroke, DKA, Trauma).
+          - Vitals should be realistic.
+          - DO NOT always generate "Acute Chest Pain". Pick a random system.
+
+          IMPORTANT: Output purely Valid JSON matching this exact structure:
+          {
+            "title": "Clinical Case Title",
+            "difficulty": "${defaultDiff}",
+            "vignette": {
+              "intro": "A [age]-year-old [gender] presents with...",
+              "vitals": { 
+                "BP": "120/80", "HR": "80", "RR": "18", "SpO2": "98%", "Temp": "37.2C" 
+              },
+              "history": "Relevant past history..."
+            }
+          }
+        `;
         
         const vignetteData = await callGemini(
             vignettePrompt, 
@@ -120,20 +143,47 @@ export default function CasesPage() {
             FEATURE_MODELS.caseVignette 
         );
 
-        if (!vignetteData?.vignette?.intro) throw new Error("Failed to generate vignette.");
+        // Fallback for flat structure
+        if (!vignetteData.vignette && vignetteData.intro) {
+            vignetteData.vignette = {
+                intro: vignetteData.intro,
+                vitals: vignetteData.vitals || {},
+                history: vignetteData.history || ''
+            };
+        }
+
+        if (!vignetteData?.vignette?.intro) throw new Error("Failed to generate vignette structure.");
 
         // 2. Generate Questions
         setLoadingStep('Developing Clinical Logic...');
+        
+        // 🧠 UPDATED: Asking for 4-5 options specifically
         const questionsPrompt = `
-          Patient: "${vignetteData.vignette.intro}"
-          Vitals: ${JSON.stringify(vignetteData.vignette.vitals)}
-          History: ${vignetteData.vignette.history}
+          Patient Case: "${vignetteData.vignette.intro}"
+          History: "${vignetteData.vignette.history}"
           
-          Generate 3 critical, high-yield decision-making questions for a medical student. 
-          Include tricky distractors and detailed explanations. Output strictly JSON.
+          Generate 12 high-yield clinical questions for an MBBS student based on this case.
+          - Questions should progress: History taking -> Investigations -> Diagnosis -> Management -> Complications.
+          - **IMPORTANT: Provide 4 to 5 options for every question.**
+          - Include tricky distractors relevant to the Indian context.
+          
+          Output purely Valid JSON with this exact structure:
+          {
+            "steps": [
+              {
+                "id": 1,
+                "question": "Question text?",
+                "options": [
+                  { "id": "a", "text": "Option A", "feedback": "...", "correct": false },
+                  { "id": "b", "text": "Option B", "feedback": "...", "correct": false },
+                  { "id": "c", "text": "Option C", "feedback": "...", "correct": true },
+                  { "id": "d", "text": "Option D", "feedback": "...", "correct": false }
+                ]
+              }
+            ]
+          }
         `;
 
-        // We use the same model logic here as defined in config (likely DeepSeek for both)
         const stepsData = await callGemini(questionsPrompt, STEPS_SCHEMA, FEATURE_MODELS.caseQuestions);
 
         if (!stepsData?.steps) throw new Error("Failed to generate questions.");
@@ -159,6 +209,7 @@ export default function CasesPage() {
         body: JSON.stringify({ title: caseData.title, difficulty: caseData.difficulty, data: caseData })
       });
       fetchSavedCases();
+      alert('Case saved successfully!');
     } catch(e) { alert('Save failed'); }
   };
 
@@ -182,16 +233,16 @@ export default function CasesPage() {
         setStepIndex(stepIndex + 1);
         setFeedback(null);
     } else {
-        alert('Case Complete! Great job.');
+        setStarted(false);
+        setStepIndex(0);
+        setFeedback(null);
     }
   };
 
-  // --- Components for New UI ---
+  // --- Components for UI ---
   const VitalsDisplay = ({ vitals }) => (
     <div className="bg-slate-900 rounded-xl p-4 text-teal-400 font-mono text-sm grid grid-cols-2 gap-4 shadow-inner border border-slate-700 relative overflow-hidden">
-      {/* Scanline effect */}
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-teal-500/5 to-transparent opacity-20 pointer-events-none animate-[scan_2s_linear_infinite]"></div>
-      
       <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-wider">Heart Rate</span><div className="flex items-center gap-2"><HeartPulse size={16} className="animate-pulse text-red-500"/> <span className="text-xl">{vitals.HR || '--'}</span> <span className="text-xs">bpm</span></div></div>
       <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-wider">BP</span><div className="flex items-center gap-2"><Activity size={16}/> <span className="text-xl">{vitals.BP || '--'}</span> <span className="text-xs">mmHg</span></div></div>
       <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-wider">SpO2</span><div className="flex items-center gap-2"><Droplets size={16} className="text-blue-400"/> <span className="text-xl">{vitals.SpO2 || '--'}</span></div></div>
@@ -284,6 +335,11 @@ export default function CasesPage() {
          <div className="grid lg:grid-cols-3 gap-6 md:gap-8">
             {/* Vitals & History Sidebar */}
             <div className="lg:col-span-1 space-y-4">
+                {/* 🧠 STYLED BACK BUTTON */}
+                <button onClick={() => setStarted(false)} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-teal-600 transition-all mb-4 font-bold text-sm px-4 py-2 rounded-xl shadow-sm w-fit">
+                    <ArrowLeft size={16}/> Back to Case Details
+                </button>
+
                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-lg sticky top-24">
                     <h3 className="font-bold mb-6 text-slate-900 flex items-center gap-2 uppercase tracking-wider text-sm"><Activity size={18} className="text-teal-500"/> Patient Vitals</h3>
                     <VitalsDisplay vitals={caseData.vignette.vitals || {}} />
@@ -335,7 +391,6 @@ export default function CasesPage() {
                    </div>
                    <p className="text-slate-700 leading-relaxed">{feedback.feedback}</p>
                    
-                   {/* NEXT BUTTON IS NOW ALWAYS VISIBLE IN FEEDBACK MODE */}
                    <div className="mt-6 flex justify-end">
                        <button 
                             onClick={handleNext} 
