@@ -19,7 +19,8 @@ import {
   Moon,
   MessageSquare,
   HelpCircle,
-  Shield
+  Shield,
+  Users // <--- IMPORTED THIS
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -34,26 +35,26 @@ export default function Navbar() {
     { id: 'skills', label: 'Skills', path: '/skills' },
     { id: 'tools', label: 'Tools', path: '/tools' },
     { id: 'roadmap', label: 'Roadmap', path: '/roadmap' },
+    { id: 'community', label: 'Community', path: '/community' }, // <--- ADDED THIS
   ];
 
   const mobileItems = [
     { icon: Brain, label: 'Map', path: '/mindmap' },
     { icon: Stethoscope, label: 'Cases', path: '/cases' },
+    { icon: Users, label: 'Social', path: '/community' }, // <--- ADDED THIS
     { icon: Layers, label: 'Tools', path: '/tools' },
     { icon: MapIcon, label: 'Plan', path: '/roadmap' }
   ];
 
-  // State
+  // ... (Rest of the state and logic remains exactly the same) ...
   const [sessionUser, setSessionUser] = useState(undefined); 
   const [sessionLoading, setSessionLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(false); // State for visual toggle
+  const [darkMode, setDarkMode] = useState(false);
   
-  // Refs
   const menuRef = useRef(null);
   const btnRef = useRef(null);
 
-  // --- Auth & Session Logic (Updated to load theme) ---
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -65,17 +66,12 @@ export default function Navbar() {
         
         if (json?.ok && json?.user) {
           setSessionUser(json.user);
-          
-          // 1. Determine theme preference: DB > System preference > Default light
           const dbTheme = json.user.theme;
           const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
           const preferredTheme = dbTheme || (systemPrefersDark ? 'dark' : 'light');
-
-          // 2. Apply theme and set state
           const isDark = preferredTheme === 'dark';
           setDarkMode(isDark);
           document.documentElement.classList.toggle('dark', isDark);
-
         } else {
           setSessionUser(null);
         }
@@ -88,17 +84,14 @@ export default function Navbar() {
     return () => { mounted = false; };
   }, []);
 
-  // --- NEW: Theme Toggle and Save Handler ---
   const toggleTheme = async () => {
     const newMode = !darkMode;
     setDarkMode(newMode);
     document.documentElement.classList.toggle('dark', newMode);
 
     if (sessionUser) {
-        // Save preference to the database (using existing /api/user/update)
         const newThemeValue = newMode ? 'dark' : 'light';
         try {
-            // Include existing required fields (name, avatar, year) + new theme field
             await fetch('/api/user/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -106,16 +99,15 @@ export default function Navbar() {
                     name: sessionUser.name, 
                     avatar: sessionUser.avatar, 
                     year: sessionUser.year,
-                    theme: newThemeValue // Save the new theme value
+                    theme: newThemeValue
                 }),
             });
-            router.refresh(); // Refresh session data in app
+            router.refresh();
         } catch (e) {
             console.error("Failed to save theme preference:", e);
         }
     }
   };
-
 
   const handleLogout = async () => {
     try {
@@ -129,7 +121,6 @@ export default function Navbar() {
 
   const onAuthPage = pathname?.startsWith('/login') || pathname?.startsWith('/register') || pathname?.startsWith('/onboard');
 
-  // --- Click Outside Logic ---
   useEffect(() => {
     function handleDocClick(e) {
       if (!menuOpen) return;
@@ -147,8 +138,6 @@ export default function Navbar() {
       document.removeEventListener('keydown', handleEsc);
     };
   }, [menuOpen]);
-
-  // --- Sub-Components ---
 
   function NavItem({ item }) {
     const isActive = pathname === item.path;
@@ -180,7 +169,6 @@ export default function Navbar() {
     );
   }
 
-  // Helper for menu items
   function MenuItem({ icon: Icon, label, onClick, href, className = "", badge }) {
     const content = (
       <div className={`flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm transition-colors ${className || 'text-slate-600 hover:bg-slate-50 hover:text-teal-700'}`}>
@@ -206,15 +194,12 @@ export default function Navbar() {
     );
   }
 
-  // --- Render ---
-
   return (
     <>
       <nav className="fixed top-0 left-0 w-full z-50 bg-white/80 backdrop-blur-md border-b border-teal-100 text-slate-800 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             
-            {/* Logo */}
             <Link href="/" className="flex items-center gap-2 cursor-pointer group">
               <div className="bg-gradient-to-tr from-teal-500 to-cyan-400 p-2 rounded-lg shadow-lg shadow-teal-200/50 transition-transform group-hover:scale-105">
                 <Activity className="h-5 w-5 text-white" />
@@ -225,17 +210,14 @@ export default function Navbar() {
               </div>
             </Link>
 
-            {/* Desktop Nav */}
             <div className="hidden md:flex items-center bg-slate-100/50 p-1 rounded-full border border-slate-200">
               {navItems.map((item) => (
                 <NavItem item={item} key={item.id} />
               ))}
             </div>
 
-            {/* Right Side Actions */}
             <div className="flex items-center gap-3 relative">
               
-              {/* Profile Trigger Button */}
               <button
                 ref={btnRef}
                 onClick={() => { if (!onAuthPage) setMenuOpen(v => !v); }}
@@ -248,7 +230,6 @@ export default function Navbar() {
                   ${menuOpen ? 'ring-2 ring-teal-100 ring-offset-2' : ''}
                 `}
               >
-                {/* Avatar Image */}
                 <div className="relative h-9 w-9 sm:h-8 sm:w-8 rounded-full overflow-hidden border border-white shadow-sm ring-1 ring-slate-100">
                   {sessionUser?.avatar ? (
                     <img src={sessionUser.avatar} alt="Profile" className="h-full w-full object-cover" />
@@ -259,7 +240,6 @@ export default function Navbar() {
                   )}
                 </div>
                 
-                {/* Text Label */}
                 <div className={`hidden sm:flex items-center gap-2 ${onAuthPage ? 'text-slate-400' : 'text-teal-900'}`}>
                    <div className="flex flex-col items-start leading-none">
                       <span className="text-xs font-bold max-w-[100px] truncate">
@@ -270,16 +250,12 @@ export default function Navbar() {
                 </div>
               </button>
 
-              {/* ------------------------------------------------ */}
-              {/* POPUP MENU (The Sidebar)                         */}
-              {/* ------------------------------------------------ */}
               {menuOpen && (
                 <div
                   ref={menuRef}
                   role="menu"
                   className="absolute right-0 top-full mt-2 w-72 sm:w-80 origin-top-right bg-white rounded-2xl shadow-xl ring-1 ring-black/5 focus:outline-none animate-in fade-in slide-in-from-top-2 z-50 overflow-hidden"
                 >
-                  {/* --- Header Section --- */}
                   <div className="p-4 bg-gradient-to-b from-slate-50 to-white border-b border-slate-100">
                     {sessionUser ? (
                       <div className="flex items-center gap-3">
@@ -315,32 +291,28 @@ export default function Navbar() {
                     )}
                   </div>
 
-                  {/* --- Menu Body --- */}
                   <div className="py-2 flex flex-col gap-0.5">
                     {sessionUser ? (
                       <>
-                        {/* 1. Dashboard */}
                         <MenuItem href="/dashboard" icon={LayoutDashboard} label="Dashboard" />
                         
+                        {/* ADDED COMMUNITY HERE TO MENU */}
+                        <MenuItem href="/community" icon={Users} label="Student Community" />
+
                         <div className="my-1.5 border-t border-slate-100" />
                         
-                        {/* 2. Settings Group */}
                         <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Settings</div>
                         <MenuItem href="/profile" icon={UserIcon} label="Profile" />
                         <MenuItem href="/settings" icon={Settings} label="Preferences" />
                         
-                        {/* Dark Mode Toggle (Now functional) */}
-                       
                         <div className="my-1.5 border-t border-slate-100" />
 
-                        {/* 3. Help Center & AI Chatbot */}
                         <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Support</div>
                         <MenuItem href="/help" icon={HelpCircle} label="Help Center (AI)" badge="AI" />
                         <MenuItem href="/feedback" icon={MessageSquare} label="Feedback" />
                         <MenuItem href="/privacy" icon={Shield} label="Privacy" />
                       </>
                     ) : (
-                       // Guest Links
                        <>
                         <MenuItem href="/features" icon={Sparkles} label="Features" />
                         <MenuItem href="/pricing" icon={CreditCard} label="Pricing" />
@@ -367,7 +339,6 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* Mobile Bottom Nav */}
       <div className="md:hidden flex justify-around bg-white/95 backdrop-blur-md border-t border-slate-100 py-3 fixed bottom-0 w-full z-50 pb-safe">
         {mobileItems.map((item) => (
           <MobileNavItem key={item.label} item={item} />

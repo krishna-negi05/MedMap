@@ -20,18 +20,38 @@ model User {
   name      String?
   year      Int      @default(1)
   createdAt DateTime @default(now())
+  
+  // Study Data
   notes     Note[]
   progress  TopicProgress[]
   mindmaps  Mindmap[]
   flashcards FlashcardDeck[]
   toolHistory ToolHistory[]
   cases     SavedCase[]
+  
+  // Social & Community
   feedback      Feedback[]
+  resources     Resource[]
+  questions     Question[]
+  answers       Answer[]
+  votes         Vote[]
+  posts         Post[]
+  comments      Comment[]
+  likes         Like[]
+  pollVotes     PollVote[]
+  ownedGroups   Group[]        @relation("GroupAdmin")
+  groups        GroupMember[]
+  messages      Message[]
+  downloads     Download[]     // <--- ADDED THIS: Inverse relation for Download tracking
+
+  // Preferences
   mindmapDepth     Int             @default(3)
   contentDensity   String          @default("standard") // 'compact', 'standard', 'spacious'
   defaultDifficulty String         @default("Intermediate") // 'Beginner', 'Intermediate', 'Advanced'
   autoProgress     Boolean         @default(true)
   roadmapReminders Boolean         @default(true)
+  
+  // Profile
   role      String
   avatar    String?
   theme     String?  
@@ -105,4 +125,191 @@ model Feedback {
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
+}
+
+// --- 1. THE LIBRARY (Notes & Resources) ---
+model Resource {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  subject     String   // e.g., "Anatomy", "Pathology"
+  year        Int      // 1, 2, 3, 4
+  fileUrl     String   // Cloudinary URL
+  fileType    String   // 'pdf', 'image'
+  downloads   Int      @default(0)
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  downloadHistory Download[] // <--- ADDED THIS: Inverse relation to track individual downloads
+  
+  createdAt   DateTime @default(now())
+}
+
+// --- 2. DOUBT CLEARING (Stack Overflow Style) ---
+model Question {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   // Detailed description
+  tags        String[] // ["Physiology", "Hard"]
+  isSolved    Boolean  @default(false)
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  answers     Answer[]
+  votes       Vote[]   // Votes on the question itself
+  
+  createdAt   DateTime @default(now())
+}
+
+model Answer {
+  id          String   @id @default(cuid())
+  content     String
+  isAccepted  Boolean  @default(false) // "Green Tick" answer
+  
+  questionId  String
+  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  votes       Vote[]   // Votes on this specific answer
+  
+  createdAt   DateTime @default(now())
+}
+
+model Vote {
+  id          String   @id @default(cuid())
+  value       Int      // 1 for upvote, -1 for downvote
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  // A vote can be for a Question OR an Answer
+  questionId  String?
+  question    Question? @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  answerId    String?
+  answer      Answer?   @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId]) // User can only vote once per question
+  @@unique([userId, answerId])   // User can only vote once per answer
+}
+
+// --- 3. MED LIFE (Social Feed & Polls) ---
+model Post {
+  id          String   @id @default(cuid())
+  content     String?
+  imageUrl    String?  // Optional image
+  type        String   @default("text") // 'text', 'image', 'poll'
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  likes       Like[]
+  comments    Comment[]
+  pollOptions PollOption[] // Only if type == 'poll'
+  
+  createdAt   DateTime @default(now())
+}
+
+model Comment {
+  id          String   @id @default(cuid())
+  content     String
+  
+  postId      String
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+}
+
+model Like {
+  id          String   @id @default(cuid())
+  postId      String
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  @@unique([userId, postId])
+}
+
+model PollOption {
+  id          String     @id @default(cuid())
+  text        String     // e.g., "Yes", "No"
+  postId      String
+  post        Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  votes       PollVote[]
+}
+
+model PollVote {
+  id          String     @id @default(cuid())
+  
+  optionId    String
+  option      PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  
+  userId      String
+  user        User       @relation(fields: [userId], references: [id])
+  
+  @@unique([userId, optionId]) // Prevent spam voting
+}
+
+// --- 4. STUDY GROUPS (Chat) ---
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  avatar      String?  // Group icon
+  
+  adminId     String
+  admin       User     @relation("GroupAdmin", fields: [adminId], references: [id])
+  
+  members     GroupMember[]
+  messages    Message[]
+  
+  createdAt   DateTime @default(now())
+}
+
+model GroupMember {
+  id          String   @id @default(cuid())
+  groupId     String
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  joinedAt    DateTime @default(now())
+  
+  @@unique([userId, groupId])
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  content     String
+  
+  groupId     String
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  
+  senderId    String
+  sender      User     @relation(fields: [senderId], references: [id])
+  
+  createdAt   DateTime @default(now())
+}
+
+model Download {
+  id         String   @id @default(cuid())
+  
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, resourceId]) // <--- Ensures 1 user can't count twice for same file
 }
