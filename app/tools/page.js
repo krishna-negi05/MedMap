@@ -4,19 +4,62 @@ import {
   Layers, Pill, FlaskConical, Mic, Image as ImageIcon, 
   RefreshCw, X, ChevronRight, RotateCcw, Sparkles, 
   Lightbulb, AlertTriangle, CheckCircle2, Volume2, ArrowRight, 
-  Save, Clock, Trash2, FolderOpen
+  Save, Clock, Trash2, FolderOpen, Loader2 
 } from 'lucide-react';
 import { callGemini } from '../../lib/gemini';
+// 👇 Import your centralized model configuration
+import { FEATURE_MODELS } from '../../lib/ai-config';
 
 // --- Schemas ---
-const FLASHCARD_SCHEMA = { type: "OBJECT", properties: { deckTitle: { type: "STRING" }, cards: { type: "ARRAY", items: { type: "OBJECT", properties: { front: { type: "STRING" }, back: { type: "STRING" }, difficulty: { type: "STRING" } } } } } };
-const PHARMA_INTERACTION_SCHEMA = { type: "OBJECT", properties: { severity: { type: "STRING", enum: ["Mild", "Moderate", "Severe", "Contraindicated"] }, mechanism: { type: "STRING" }, recommendation: { type: "STRING" }, summary: { type: "STRING" } } };
-const LAB_REPORT_SCHEMA = { type: "OBJECT", properties: { interpretation: { type: "STRING" }, differentials: { type: "ARRAY", items: { type: "STRING" } }, nextSteps: { type: "ARRAY", items: { type: "STRING" } }, severity: { type: "STRING", enum: ["Normal", "Abnormal", "Critical"] } } };
-const VIVA_EVALUATION_SCHEMA = { type: "OBJECT", properties: { score: { type: "INTEGER" }, feedback: { type: "STRING" }, betterAnswer: { type: "STRING" }, nextQuestion: { type: "STRING" } } };
+const FLASHCARD_SCHEMA = { 
+  type: "OBJECT", 
+  properties: { 
+    deckTitle: { type: "STRING" }, 
+    cards: { 
+      type: "ARRAY", 
+      items: { 
+        type: "OBJECT", 
+        properties: { 
+          front: { type: "STRING" }, 
+          back: { type: "STRING" }, 
+          difficulty: { type: "STRING" } 
+        } 
+      } 
+    } 
+  } 
+};
 
-// --- Sub-Components ---
+const PHARMA_INTERACTION_SCHEMA = { 
+  type: "OBJECT", 
+  properties: { 
+    severity: { type: "STRING", enum: ["Mild", "Moderate", "Severe", "Contraindicated"] }, 
+    mechanism: { type: "STRING" }, 
+    recommendation: { type: "STRING" }, 
+    summary: { type: "STRING" } 
+  } 
+};
 
-// 1. FLASHCARDS
+const LAB_REPORT_SCHEMA = { 
+  type: "OBJECT", 
+  properties: { 
+    interpretation: { type: "STRING" }, 
+    differentials: { type: "ARRAY", items: { type: "STRING" } }, 
+    nextSteps: { type: "ARRAY", items: { type: "STRING" } }, 
+    severity: { type: "STRING", enum: ["Normal", "Abnormal", "Critical"] } 
+  } 
+};
+
+const VIVA_EVALUATION_SCHEMA = { 
+  type: "OBJECT", 
+  properties: { 
+    score: { type: "INTEGER" }, 
+    feedback: { type: "STRING" }, 
+    betterAnswer: { type: "STRING" }, 
+    nextQuestion: { type: "STRING" } 
+  } 
+};
+
+// --- 1. FLASHCARDS ---
 const FlashcardView = () => {
   const [topic, setTopic] = useState('');
   const [deck, setDeck] = useState(null);
@@ -41,7 +84,8 @@ const FlashcardView = () => {
     setLoading(true);
     try {
       const prompt = `Create 8 high-yield medical flashcards for: "${topic}". JSON Output.`;
-      const res = await callGemini(prompt, FLASHCARD_SCHEMA);
+      // Use Qwen (Structural Model)
+      const res = await callGemini(prompt, FLASHCARD_SCHEMA, FEATURE_MODELS.flashcards);
       setDeck(res); setCurrentIndex(0); setFlipped(false);
     } catch (e) { alert("Error generating cards."); }
     setLoading(false);
@@ -76,7 +120,6 @@ const FlashcardView = () => {
 
   return (
     <div className="h-full flex flex-col relative">
-      {/* Top Bar */}
       <div className="flex justify-between items-center mb-4">
          <h3 className="text-xl font-bold text-slate-800">Smart Flashcards</h3>
          <button onClick={() => setShowHistory(!showHistory)} className="text-slate-500 hover:text-teal-600 flex items-center gap-1 text-xs font-bold bg-slate-100 px-3 py-2 rounded-lg">
@@ -143,7 +186,7 @@ const FlashcardView = () => {
   );
 };
 
-// 2. PHARMA
+// --- 2. PHARMA ---
 const PharmaView = () => {
   const [drugA, setDrugA] = useState('');
   const [drugB, setDrugB] = useState('');
@@ -165,7 +208,8 @@ const PharmaView = () => {
     setLoading(true);
     try {
       const prompt = `Analyze interaction between ${drugA} and ${drugB}. JSON { severity, mechanism, recommendation, summary }`;
-      const res = await callGemini(prompt, PHARMA_INTERACTION_SCHEMA);
+      // Use Qwen (Structural)
+      const res = await callGemini(prompt, PHARMA_INTERACTION_SCHEMA, FEATURE_MODELS.pharma);
       setResult(res);
       setViewHistory(false);
     } catch(e) { alert("Analysis failed"); }
@@ -224,7 +268,7 @@ const PharmaView = () => {
   );
 };
 
-// 3. LABS
+// --- 3. LABS ---
 const LabView = () => {
   const [values, setValues] = useState('');
   const [result, setResult] = useState(null);
@@ -244,7 +288,8 @@ const LabView = () => {
     setLoading(true);
     try {
       const prompt = `Interpret these lab values: "${values}". JSON { interpretation, differentials:[], nextSteps:[], severity }`;
-      const res = await callGemini(prompt, LAB_REPORT_SCHEMA);
+      // Use Qwen (Structural)
+      const res = await callGemini(prompt, LAB_REPORT_SCHEMA, FEATURE_MODELS.labs);
       setResult(res);
       setViewHistory(false);
     } catch (e) { alert("Error analyzing labs"); }
@@ -297,7 +342,7 @@ const LabView = () => {
   );
 };
 
-// 4. VIVA (Simplified for brevity - can extend with history similarly if needed)
+// --- 4. VIVA (OSCE) ---
 const VivaView = () => {
   const [active, setActive] = useState(false);
   const [topic, setTopic] = useState('General Medicine');
@@ -310,7 +355,8 @@ const VivaView = () => {
     setActive(true);
     setLoading(true);
     const prompt = `Act as a strict medical professor. Ask a viva question about ${topic}. Short question.`;
-    const text = await callGemini(prompt);
+    // Use DeepSeek (Reasoning) to act as a strict professor
+    const text = await callGemini(prompt, null, FEATURE_MODELS.osce);
     setCurrentQ(text);
     setLoading(false);
     if ('speechSynthesis' in window) {
@@ -323,7 +369,8 @@ const VivaView = () => {
     if (!userAns) return;
     setLoading(true);
     const prompt = `Professor asked: "${currentQ}". Student answered: "${userAns}". Grade it (0-10), give feedback, better answer, and next question. JSON.`;
-    const res = await callGemini(prompt, VIVA_EVALUATION_SCHEMA);
+    // Use DeepSeek (Reasoning) to evaluate logic
+    const res = await callGemini(prompt, VIVA_EVALUATION_SCHEMA, FEATURE_MODELS.osce);
     setEvaluation(res);
     setCurrentQ(res.nextQuestion);
     setLoading(false);
@@ -373,6 +420,7 @@ const VivaView = () => {
   );
 };
 
+// --- 5. RADIOLOGY (Placeholder for now) ---
 const RadiologyView = () => {
   const [mode, setMode] = useState('cxr'); 
   const [showLabels, setShowLabels] = useState(false);
@@ -415,7 +463,6 @@ const RadiologyView = () => {
 };
 
 // --- Main Tools Page ---
-
 export default function ToolsPage() {
   const [activeTool, setActiveTool] = useState('flashcards');
 

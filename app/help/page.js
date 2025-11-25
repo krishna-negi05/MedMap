@@ -3,8 +3,11 @@ import { useState, useEffect, useRef } from 'react';
 import { Send, Bot, User, RefreshCw, Sparkles, ArrowLeft } from 'lucide-react';
 import { callGemini } from '../../lib/gemini';
 import { useRouter } from 'next/navigation';
+// 👇 Import config
+import { FEATURE_MODELS } from '../../lib/ai-config';
 
 export default function HelpPage() {
+  // ... (existing state: messages, input, loading, scrollRef) ...
   const router = useRouter();
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Hello! I am the MedMap Support AI. How can I help you with the platform today?' }
@@ -13,10 +16,10 @@ export default function HelpPage() {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef(null);
 
-  // Auto-scroll to bottom
+  // ... (existing useEffect for scroll) ...
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
@@ -29,15 +32,18 @@ export default function HelpPage() {
     setLoading(true);
 
     try {
-      // System Prompt to guide the AI
       const systemContext = `You are the helpful support assistant for MedMap, an MBBS study aid application.
       The app features: Mindmaps (AI generated), Clinical Cases, Skills Simulator, Tools (Flashcards, Pharma interactions, Lab interpreter, Viva voice), and a Syllabus Roadmap.
       Answer questions about navigating the app, using tools, or general study advice. Keep answers concise and helpful.`;
       
       const prompt = `${systemContext}\n\nUser asked: "${input}"`;
       
-      // Using your existing Gemini utility
-      const responseText = await callGemini(prompt); 
+      // 👇 Pass the Chat Model
+      const responseText = await callGemini(
+        prompt, 
+        null, // No schema needed for chat
+        FEATURE_MODELS.helpChat // Uses Qwen or Llama
+      ); 
       
       setMessages(prev => [...prev, { role: 'assistant', text: responseText }]);
     } catch (error) {
@@ -48,6 +54,7 @@ export default function HelpPage() {
   };
 
   return (
+    // ... (same JSX as before, no changes needed here) ...
     <div className="max-w-3xl mx-auto h-[calc(100vh-64px)] p-4 flex flex-col">
       
       {/* Header */}
