@@ -13,13 +13,17 @@ export default function CasesPage() {
   const [started, setStarted] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [defaultDiff, setDefaultDiff] = useState('Intermediate');
   
   // History States
   const [savedCases, setSavedCases] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
 
-  useEffect(() => { fetchSavedCases(); }, []);
-
+  useEffect(() => {
+    fetchSavedCases();
+    fetchUserSettings();
+  }, []);
+  
   const fetchSavedCases = async () => {
     try {
       const res = await fetch('/api/cases');
@@ -27,11 +31,26 @@ export default function CasesPage() {
       if(json.ok) setSavedCases(json.data);
     } catch(e) { console.error(e); }
   };
-
+  
+  const fetchUserSettings = async () => {
+    try {
+        const res = await fetch('/api/auth/session');
+        const json = await res.json();
+        if(json.ok && json.user?.defaultDifficulty) {
+            setDefaultDiff(json.user.defaultDifficulty);
+            // Optionally update the current caseData difficulty if it hasn't started yet
+            if (!started) {
+                setCaseData(prev => ({ ...prev, difficulty: json.user.defaultDifficulty }));
+            }
+        }
+    } catch(e) {}
+  };
   const handleGenerate = async () => {
     setLoading(true);
     try { 
-        const res = await callGemini("Generate a clinical case study regarding a random common medical emergency (MI, Stroke, Sepsis, Trauma etc). JSON output.", CLINICAL_CASE_SCHEMA); 
+        const prompt = `Generate a clinical case study regarding a random common medical emergency (MI, Stroke, Sepsis, Trauma etc). Difficulty Level: ${defaultDiff}. JSON output.`;
+        const res = await callGemini(prompt, CLINICAL_CASE_SCHEMA); 
+        setCaseData(res);
         setCaseData(res); 
         setStarted(false); 
         setStepIndex(0); 
