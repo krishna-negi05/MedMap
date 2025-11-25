@@ -20,10 +20,16 @@ model User {
   name      String?
   year      Int      @default(1)
   createdAt DateTime @default(now())
+  mindmapDepth Int @default(3)
   notes     Note[]
   progress  TopicProgress[]
+  mindmaps  Mindmap[]
+  flashcards FlashcardDeck[]
+  toolHistory ToolHistory[]
+  cases     SavedCase[]
   role      String
   avatar    String?
+  theme     ?String  
   resetToken        String?
   resetTokenExpiry  DateTime?
 }
@@ -45,4 +51,43 @@ model TopicProgress {
   user        User     @relation(fields: [userId], references: [id])
   
   @@unique([userId, topicId])
+}
+
+model Mindmap {
+  id        String   @id @default(cuid())
+  topic     String   // The search term (e.g., "Cardiac Cycle")
+  data      Json     // The entire JSON structure of the mindmap
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FlashcardDeck {
+  id        String   @id @default(cuid())
+  topic     String
+  cards     Json     // Stores the array of cards
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model ToolHistory {
+  id        String   @id @default(cuid())
+  toolType  String   // 'pharma', 'labs', 'viva'
+  title     String   // Search query or summary (e.g., "Aspirin + Warfarin")
+  data      Json     // The result object
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model SavedCase {
+  id         String   @id @default(cuid())
+  title      String
+  difficulty String
+  data       Json     // Stores the full case (vitals, history, steps)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  createdAt  DateTime @default(now())
 }

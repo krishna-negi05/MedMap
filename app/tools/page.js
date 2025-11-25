@@ -1,9 +1,10 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Layers, Pill, FlaskConical, Mic, Image as ImageIcon, 
   RefreshCw, X, ChevronRight, RotateCcw, Sparkles, 
-  Lightbulb, AlertTriangle, CheckCircle2, Volume2, ArrowRight, Stethoscope 
+  Lightbulb, AlertTriangle, CheckCircle2, Volume2, ArrowRight, 
+  Save, Clock, Trash2, FolderOpen
 } from 'lucide-react';
 import { callGemini } from '../../lib/gemini';
 
@@ -15,12 +16,25 @@ const VIVA_EVALUATION_SCHEMA = { type: "OBJECT", properties: { score: { type: "I
 
 // --- Sub-Components ---
 
+// 1. FLASHCARDS
 const FlashcardView = () => {
   const [topic, setTopic] = useState('');
   const [deck, setDeck] = useState(null);
   const [loading, setLoading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [savedDecks, setSavedDecks] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => { fetchDecks(); }, []);
+
+  const fetchDecks = async () => {
+    try {
+        const res = await fetch('/api/tools/flashcards');
+        const json = await res.json();
+        if(json.ok) setSavedDecks(json.data);
+    } catch(e) {}
+  };
 
   const generateDeck = async () => {
     if (!topic) return;
@@ -33,53 +47,118 @@ const FlashcardView = () => {
     setLoading(false);
   };
 
+  const saveDeck = async () => {
+    if(!deck) return;
+    try {
+        await fetch('/api/tools/flashcards', {
+            method: 'POST',
+            body: JSON.stringify({ topic: deck.deckTitle || topic, cards: deck })
+        });
+        alert('Deck saved!');
+        fetchDecks();
+    } catch(e) { alert('Save failed'); }
+  };
+
+  const loadDeck = (saved) => {
+      setDeck(saved.cards);
+      setTopic(saved.topic);
+      setCurrentIndex(0);
+      setFlipped(false);
+      setShowHistory(false);
+  };
+
+  const deleteDeck = async (id, e) => {
+      e.stopPropagation();
+      if(!confirm('Delete deck?')) return;
+      await fetch(`/api/tools/flashcards?id=${id}`, { method: 'DELETE' });
+      fetchDecks();
+  };
+
   return (
-    <div className="h-full flex flex-col">
-      {!deck ? (
-        <div className="flex flex-col items-center justify-center h-full text-center max-w-md mx-auto">
-          <div className="bg-teal-50 p-4 rounded-full mb-6"><Layers size={40} className="text-teal-500"/></div>
-          <h3 className="text-2xl font-bold mb-2 text-slate-800">Smart Flashcards</h3>
-          <p className="text-slate-500 mb-8 text-sm">Enter any medical topic and AI will generate a high-yield study deck.</p>
-          <div className="flex gap-2 w-full">
-            <input className="flex-1 border border-slate-200 rounded-2xl px-5 py-3 outline-none focus:ring-2 focus:ring-teal-500" placeholder="Enter topic..." value={topic} onChange={(e)=>setTopic(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && generateDeck()}/>
-            <button onClick={generateDeck} disabled={loading} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold">{loading ? <RefreshCw className="animate-spin"/> : 'Create'}</button>
+    <div className="h-full flex flex-col relative">
+      {/* Top Bar */}
+      <div className="flex justify-between items-center mb-4">
+         <h3 className="text-xl font-bold text-slate-800">Smart Flashcards</h3>
+         <button onClick={() => setShowHistory(!showHistory)} className="text-slate-500 hover:text-teal-600 flex items-center gap-1 text-xs font-bold bg-slate-100 px-3 py-2 rounded-lg">
+            <FolderOpen size={14}/> {showHistory ? 'Close Library' : 'My Decks'}
+         </button>
+      </div>
+
+      {showHistory ? (
+          <div className="grid gap-2 overflow-y-auto max-h-[400px] pr-2">
+              {savedDecks.length === 0 && <p className="text-center text-slate-400 py-10">No saved decks.</p>}
+              {savedDecks.map(d => (
+                  <div key={d.id} onClick={() => loadDeck(d)} className="bg-white border p-4 rounded-xl hover:border-teal-400 cursor-pointer flex justify-between items-center group">
+                      <div>
+                          <div className="font-bold text-slate-800">{d.topic}</div>
+                          <div className="text-[10px] text-slate-400">{new Date(d.createdAt).toLocaleDateString()}</div>
+                      </div>
+                      <button onClick={(e) => deleteDeck(d.id, e)} className="p-2 hover:bg-red-50 text-slate-300 hover:text-red-500 rounded-full"><Trash2 size={16}/></button>
+                  </div>
+              ))}
           </div>
-        </div>
       ) : (
-        <div className="flex flex-col h-full">
-            <div className="flex justify-between items-center mb-6">
-              <div><h3 className="font-bold text-xl text-slate-900">{deck.deckTitle}</h3><span className="text-teal-600 text-xs font-bold uppercase">Card {currentIndex+1} of {deck.cards.length}</span></div>
-              <button onClick={() => setDeck(null)} className="text-slate-400 hover:text-slate-600 bg-slate-100 p-2 rounded-full"><X size={20}/></button>
-            </div>
-            <div className="flex-1 flex items-center justify-center perspective-1000 py-4">
-              <div onClick={() => setFlipped(!flipped)} className={`w-full max-w-lg aspect-[3/2] relative transition-transform duration-700 transform-style-3d cursor-pointer group ${flipped ? 'rotate-y-180' : ''}`}>
-                <div className={`absolute inset-0 bg-white border-2 border-slate-100 shadow-lg rounded-3xl p-8 flex flex-col items-center justify-center text-center backface-hidden ${flipped ? 'opacity-0' : 'opacity-100'}`}>
-                   <span className="px-3 py-1 bg-teal-50 text-teal-700 rounded-full text-[10px] font-bold uppercase tracking-widest mb-6">Question</span>
-                   <p className="text-2xl font-bold text-slate-800">{deck.cards[currentIndex].front}</p>
-                   <span className="absolute bottom-6 text-xs text-slate-400 font-medium flex items-center gap-1"><RotateCcw size={10}/> Tap to flip</span>
+        <>
+            {!deck ? (
+                <div className="flex flex-col items-center justify-center h-full text-center max-w-md mx-auto">
+                <div className="bg-teal-50 p-4 rounded-full mb-6"><Layers size={40} className="text-teal-500"/></div>
+                <p className="text-slate-500 mb-8 text-sm">Enter any medical topic and AI will generate a high-yield study deck.</p>
+                <div className="flex gap-2 w-full">
+                    <input className="flex-1 border border-slate-200 rounded-2xl px-5 py-3 outline-none focus:ring-2 focus:ring-teal-500" placeholder="Enter topic..." value={topic} onChange={(e)=>setTopic(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && generateDeck()}/>
+                    <button onClick={generateDeck} disabled={loading} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold">{loading ? <RefreshCw className="animate-spin"/> : 'Create'}</button>
                 </div>
-                <div className={`absolute inset-0 bg-slate-900 text-white shadow-2xl rounded-3xl p-8 flex flex-col items-center justify-center text-center backface-hidden rotate-y-180 ${flipped ? 'opacity-100' : 'opacity-0'}`}>
-                   <span className="px-3 py-1 bg-white/10 text-teal-300 rounded-full text-[10px] font-bold uppercase tracking-widest mb-6">Answer</span>
-                   <p className="text-xl font-medium">{deck.cards[currentIndex].back}</p>
                 </div>
-              </div>
-            </div>
-            <div className="flex justify-center gap-4 mt-4">
-              <button onClick={() => {setFlipped(false); setCurrentIndex(Math.max(0, currentIndex-1))}} disabled={currentIndex===0} className="p-4 rounded-full bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50"><ChevronRight size={24} className="rotate-180 text-slate-600"/></button>
-              <button onClick={() => {setFlipped(false); setCurrentIndex(Math.min(deck.cards.length-1, currentIndex+1))}} disabled={currentIndex===deck.cards.length-1} className="p-4 rounded-full bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"><ChevronRight size={24}/></button>
-            </div>
-        </div>
+            ) : (
+                <div className="flex flex-col h-full">
+                    <div className="flex justify-between items-center mb-6 bg-slate-50 p-3 rounded-xl">
+                        <div><h3 className="font-bold text-slate-900">{deck.deckTitle}</h3><span className="text-teal-600 text-xs font-bold uppercase">Card {currentIndex+1} / {deck.cards.length}</span></div>
+                        <div className="flex gap-2">
+                            <button onClick={saveDeck} className="p-2 bg-white border rounded-lg hover:text-teal-600" title="Save Deck"><Save size={18}/></button>
+                            <button onClick={() => setDeck(null)} className="p-2 bg-white border rounded-lg hover:text-red-500"><X size={18}/></button>
+                        </div>
+                    </div>
+                    <div className="flex-1 flex items-center justify-center perspective-1000 py-4">
+                        <div onClick={() => setFlipped(!flipped)} className={`w-full max-w-lg aspect-[3/2] relative transition-transform duration-700 transform-style-3d cursor-pointer group ${flipped ? 'rotate-y-180' : ''}`}>
+                            <div className={`absolute inset-0 bg-white border-2 border-slate-100 shadow-lg rounded-3xl p-8 flex flex-col items-center justify-center text-center backface-hidden ${flipped ? 'opacity-0' : 'opacity-100'}`}>
+                            <span className="px-3 py-1 bg-teal-50 text-teal-700 rounded-full text-[10px] font-bold uppercase tracking-widest mb-6">Question</span>
+                            <p className="text-2xl font-bold text-slate-800">{deck.cards[currentIndex].front}</p>
+                            <span className="absolute bottom-6 text-xs text-slate-400 font-medium flex items-center gap-1"><RotateCcw size={10}/> Tap to flip</span>
+                            </div>
+                            <div className={`absolute inset-0 bg-slate-900 text-white shadow-2xl rounded-3xl p-8 flex flex-col items-center justify-center text-center backface-hidden rotate-y-180 ${flipped ? 'opacity-100' : 'opacity-0'}`}>
+                            <span className="px-3 py-1 bg-white/10 text-teal-300 rounded-full text-[10px] font-bold uppercase tracking-widest mb-6">Answer</span>
+                            <p className="text-xl font-medium">{deck.cards[currentIndex].back}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex justify-center gap-4 mt-4">
+                        <button onClick={() => {setFlipped(false); setCurrentIndex(Math.max(0, currentIndex-1))}} disabled={currentIndex===0} className="p-4 rounded-full bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50"><ChevronRight size={24} className="rotate-180 text-slate-600"/></button>
+                        <button onClick={() => {setFlipped(false); setCurrentIndex(Math.min(deck.cards.length-1, currentIndex+1))}} disabled={currentIndex===deck.cards.length-1} className="p-4 rounded-full bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"><ChevronRight size={24}/></button>
+                    </div>
+                </div>
+            )}
+        </>
       )}
       <style jsx>{`.rotate-y-180 { transform: rotateY(180deg); } .backface-hidden { backface-visibility: hidden; } .perspective-1000 { perspective: 1000px; } .transform-style-3d { transform-style: preserve-3d; }`}</style>
     </div>
   );
 };
 
+// 2. PHARMA
 const PharmaView = () => {
   const [drugA, setDrugA] = useState('');
   const [drugB, setDrugB] = useState('');
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [viewHistory, setViewHistory] = useState(false);
+
+  useEffect(() => { fetchHistory(); }, []);
+
+  const fetchHistory = async () => {
+      const res = await fetch('/api/tools/history?type=pharma');
+      const json = await res.json();
+      if(json.ok) setHistory(json.data);
+  };
 
   const checkInteraction = async () => {
     if (!drugA || !drugB) return;
@@ -88,36 +167,77 @@ const PharmaView = () => {
       const prompt = `Analyze interaction between ${drugA} and ${drugB}. JSON { severity, mechanism, recommendation, summary }`;
       const res = await callGemini(prompt, PHARMA_INTERACTION_SCHEMA);
       setResult(res);
+      setViewHistory(false);
     } catch(e) { alert("Analysis failed"); }
     setLoading(false);
   };
 
+  const saveResult = async () => {
+      if(!result) return;
+      await fetch('/api/tools/history', {
+          method: 'POST',
+          body: JSON.stringify({ toolType: 'pharma', title: `${drugA} + ${drugB}`, data: result })
+      });
+      alert('Saved to history');
+      fetchHistory();
+  };
+
   return (
-    <div className="h-full flex flex-col items-center max-w-2xl mx-auto">
-      <h3 className="text-xl font-bold mb-6 text-slate-800">Interaction Checker</h3>
-      <div className="flex flex-col md:flex-row gap-4 w-full mb-6">
-        <div className="flex-1 w-full"><div className="bg-slate-50 p-4 rounded-2xl border border-slate-200"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Drug A</label><input className="w-full bg-transparent outline-none font-medium" placeholder="e.g., Warfarin" value={drugA} onChange={(e)=>setDrugA(e.target.value)}/></div></div>
-        <div className="bg-white p-2 rounded-full border shadow-sm self-center"><RefreshCw size={20} className="text-slate-300"/></div>
-        <div className="flex-1 w-full"><div className="bg-slate-50 p-4 rounded-2xl border border-slate-200"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Drug B</label><input className="w-full bg-transparent outline-none font-medium" placeholder="e.g., Aspirin" value={drugB} onChange={(e)=>setDrugB(e.target.value)}/></div></div>
+    <div className="h-full flex flex-col items-center max-w-2xl mx-auto w-full">
+      <div className="flex justify-between w-full items-center mb-6">
+        <h3 className="text-xl font-bold text-slate-800">Interaction Checker</h3>
+        <button onClick={() => setViewHistory(!viewHistory)} className="text-xs font-bold bg-slate-100 px-3 py-2 rounded-lg text-slate-600 hover:text-teal-600 flex gap-1"><Clock size={14}/> History</button>
       </div>
-      <button onClick={checkInteraction} disabled={loading} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-slate-900/20">{loading ? 'Analyzing...' : 'Check Safety'} <Sparkles size={18} className="text-teal-300"/></button>
-      {result && (
-        <div className="mt-8 w-full bg-white rounded-2xl border border-slate-200 p-6 shadow-lg relative overflow-hidden animate-in slide-in-from-bottom-4">
-           <div className={`absolute top-0 left-0 w-1 h-full ${result.severity === 'Severe' || result.severity === 'Contraindicated' ? 'bg-red-500' : result.severity === 'Moderate' ? 'bg-amber-500' : 'bg-green-500'}`}></div>
-           <div className="flex items-center gap-2 mb-4"><span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${result.severity === 'Severe' || result.severity === 'Contraindicated' ? 'bg-red-100 text-red-700' : result.severity === 'Moderate' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{result.severity} Risk</span></div>
-           <p className="text-lg font-bold text-slate-900 mb-2">{result.summary}</p>
-           <p className="text-slate-600 mb-6 text-sm leading-relaxed">{result.mechanism}</p>
-           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100"><span className="text-xs font-bold text-teal-600 uppercase flex items-center gap-1"><Lightbulb size={12}/> Recommendation</span><p className="text-sm text-slate-800 mt-1 font-medium">{result.recommendation}</p></div>
-        </div>
+
+      {viewHistory ? (
+          <div className="w-full space-y-2">
+              {history.map(h => (
+                  <div key={h.id} onClick={() => { setResult(h.data); setViewHistory(false); }} className="p-4 border rounded-xl cursor-pointer hover:bg-slate-50 flex justify-between">
+                      <span className="font-bold">{h.title}</span>
+                      <span className="text-xs text-slate-400">{new Date(h.createdAt).toLocaleDateString()}</span>
+                  </div>
+              ))}
+          </div>
+      ) : (
+        <>
+            <div className="flex flex-col md:flex-row gap-4 w-full mb-6">
+                <div className="flex-1 w-full"><div className="bg-slate-50 p-4 rounded-2xl border border-slate-200"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Drug A</label><input className="w-full bg-transparent outline-none font-medium" placeholder="e.g., Warfarin" value={drugA} onChange={(e)=>setDrugA(e.target.value)}/></div></div>
+                <div className="bg-white p-2 rounded-full border shadow-sm self-center"><RefreshCw size={20} className="text-slate-300"/></div>
+                <div className="flex-1 w-full"><div className="bg-slate-50 p-4 rounded-2xl border border-slate-200"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Drug B</label><input className="w-full bg-transparent outline-none font-medium" placeholder="e.g., Aspirin" value={drugB} onChange={(e)=>setDrugB(e.target.value)}/></div></div>
+            </div>
+            <button onClick={checkInteraction} disabled={loading} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-slate-900/20">{loading ? 'Analyzing...' : 'Check Safety'} <Sparkles size={18} className="text-teal-300"/></button>
+            {result && (
+                <div className="mt-8 w-full bg-white rounded-2xl border border-slate-200 p-6 shadow-lg relative overflow-hidden animate-in slide-in-from-bottom-4">
+                    <div className={`absolute top-0 left-0 w-1 h-full ${result.severity === 'Severe' || result.severity === 'Contraindicated' ? 'bg-red-500' : result.severity === 'Moderate' ? 'bg-amber-500' : 'bg-green-500'}`}></div>
+                    <div className="flex justify-between items-start mb-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${result.severity === 'Severe' || result.severity === 'Contraindicated' ? 'bg-red-100 text-red-700' : result.severity === 'Moderate' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{result.severity} Risk</span>
+                        <button onClick={saveResult} className="text-slate-400 hover:text-teal-600"><Save size={18}/></button>
+                    </div>
+                    <p className="text-lg font-bold text-slate-900 mb-2">{result.summary}</p>
+                    <p className="text-slate-600 mb-6 text-sm leading-relaxed">{result.mechanism}</p>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100"><span className="text-xs font-bold text-teal-600 uppercase flex items-center gap-1"><Lightbulb size={12}/> Recommendation</span><p className="text-sm text-slate-800 mt-1 font-medium">{result.recommendation}</p></div>
+                </div>
+            )}
+        </>
       )}
     </div>
   );
 };
 
+// 3. LABS
 const LabView = () => {
   const [values, setValues] = useState('');
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [viewHistory, setViewHistory] = useState(false);
+
+  useEffect(() => { fetchHistory(); }, []);
+  const fetchHistory = async () => {
+      const res = await fetch('/api/tools/history?type=labs');
+      const json = await res.json();
+      if(json.ok) setHistory(json.data);
+  };
 
   const analyzeLabs = async () => {
     if (!values) return;
@@ -126,28 +246,58 @@ const LabView = () => {
       const prompt = `Interpret these lab values: "${values}". JSON { interpretation, differentials:[], nextSteps:[], severity }`;
       const res = await callGemini(prompt, LAB_REPORT_SCHEMA);
       setResult(res);
+      setViewHistory(false);
     } catch (e) { alert("Error analyzing labs"); }
     setLoading(false);
   };
 
+  const saveResult = async () => {
+      if(!result) return;
+      await fetch('/api/tools/history', {
+          method: 'POST',
+          body: JSON.stringify({ toolType: 'labs', title: values.substring(0, 20) + '...', data: result })
+      });
+      alert('Report saved');
+      fetchHistory();
+  };
+
   return (
-    <div className="h-full flex flex-col max-w-2xl mx-auto">
-      <div className="mb-6"><h3 className="text-xl font-bold mb-1 text-slate-900">Lab Report Interpreter</h3><p className="text-slate-500 text-sm">Paste lab values (e.g., "Na 125, K 5.5, pH 7.2") for instant analysis.</p></div>
-      <textarea className="w-full h-32 border border-slate-200 rounded-2xl p-4 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-teal-500 outline-none resize-none mb-4 font-mono text-sm" placeholder="Paste report values here..." value={values} onChange={(e)=>setValues(e.target.value)}></textarea>
-      <button onClick={analyzeLabs} disabled={loading} className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 disabled:opacity-50 shadow-md">{loading ? 'Analyzing Report...' : 'Interpret Results'}</button>
-      {result && (
-        <div className="mt-6 space-y-4 animate-in slide-in-from-bottom-4">
-           <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-md">
-             <div className="flex justify-between items-start mb-2"><h4 className="font-bold text-lg text-slate-900">{result.interpretation}</h4>{result.severity === 'Critical' && <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold flex items-center gap-1"><AlertTriangle size={12}/> Critical</span>}</div>
-             <div className="flex flex-wrap gap-2 mt-3">{result.differentials.map((diff, i) => (<span key={i} className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-xs font-medium border border-slate-200">{diff}</span>))}</div>
-           </div>
-           <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100"><span className="text-xs font-bold text-blue-700 uppercase tracking-wide flex items-center gap-1"><CheckCircle2 size={12}/> Recommended Steps</span><ul className="mt-3 space-y-2">{result.nextSteps.map((step, i) => <li key={i} className="text-sm text-blue-900 flex items-start gap-2 bg-white/50 p-2 rounded-lg"><span>•</span> {step}</li>)}</ul></div>
-        </div>
+    <div className="h-full flex flex-col max-w-2xl mx-auto w-full">
+      <div className="flex justify-between items-center mb-6">
+          <div><h3 className="text-xl font-bold mb-1 text-slate-900">Lab Interpreter</h3><p className="text-slate-500 text-sm">Paste lab values for instant analysis.</p></div>
+          <button onClick={() => setViewHistory(!viewHistory)} className="text-xs font-bold bg-slate-100 px-3 py-2 rounded-lg text-slate-600 hover:text-teal-600 flex gap-1"><Clock size={14}/> History</button>
+      </div>
+
+      {viewHistory ? (
+          <div className="w-full space-y-2">
+              {history.map(h => (
+                  <div key={h.id} onClick={() => { setResult(h.data); setViewHistory(false); }} className="p-4 border rounded-xl cursor-pointer hover:bg-slate-50 flex justify-between">
+                      <span className="font-bold">{h.title}</span>
+                      <span className="text-xs text-slate-400">{new Date(h.createdAt).toLocaleDateString()}</span>
+                  </div>
+              ))}
+          </div>
+      ) : (
+        <>
+            <textarea className="w-full h-32 border border-slate-200 rounded-2xl p-4 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-teal-500 outline-none resize-none mb-4 font-mono text-sm" placeholder="e.g. Na 125, K 5.5, pH 7.2" value={values} onChange={(e)=>setValues(e.target.value)}></textarea>
+            <button onClick={analyzeLabs} disabled={loading} className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 disabled:opacity-50 shadow-md">{loading ? 'Analyzing Report...' : 'Interpret Results'}</button>
+            {result && (
+                <div className="mt-6 space-y-4 animate-in slide-in-from-bottom-4 relative">
+                    <button onClick={saveResult} className="absolute top-2 right-2 p-2 bg-slate-100 rounded-full hover:bg-teal-100 text-slate-500 hover:text-teal-600"><Save size={16}/></button>
+                    <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-md">
+                        <div className="flex justify-between items-start mb-2"><h4 className="font-bold text-lg text-slate-900">{result.interpretation}</h4>{result.severity === 'Critical' && <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold flex items-center gap-1"><AlertTriangle size={12}/> Critical</span>}</div>
+                        <div className="flex flex-wrap gap-2 mt-3">{result.differentials.map((diff, i) => (<span key={i} className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-xs font-medium border border-slate-200">{diff}</span>))}</div>
+                    </div>
+                    <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100"><span className="text-xs font-bold text-blue-700 uppercase tracking-wide flex items-center gap-1"><CheckCircle2 size={12}/> Recommended Steps</span><ul className="mt-3 space-y-2">{result.nextSteps.map((step, i) => <li key={i} className="text-sm text-blue-900 flex items-start gap-2 bg-white/50 p-2 rounded-lg"><span>•</span> {step}</li>)}</ul></div>
+                </div>
+            )}
+        </>
       )}
     </div>
   );
 };
 
+// 4. VIVA (Simplified for brevity - can extend with history similarly if needed)
 const VivaView = () => {
   const [active, setActive] = useState(false);
   const [topic, setTopic] = useState('General Medicine');

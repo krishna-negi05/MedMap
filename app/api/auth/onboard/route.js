@@ -1,3 +1,4 @@
+// app/api/auth/onboard/route.js
 import { NextResponse } from 'next/server';
 import { verifyJWT, updateUser } from '../../../../lib/auth';
 
@@ -9,13 +10,15 @@ export async function POST(req) {
     const payload = verifyJWT(cookie);
     if (!payload) return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
 
-    const { name, avatar } = await req.json();
+    // --- UPDATED BODY PARSING ---
+    const { name, avatar, year } = await req.json();
 
-    if (!name || !avatar) {
-      return NextResponse.json({ error: 'Name and avatar required' }, { status: 400 });
+    if (!name || !avatar || !year) {
+      return NextResponse.json({ error: 'Name, avatar, and year required' }, { status: 400 });
     }
 
-    const user = await updateUser(payload.sub, { name, avatar });
+    // --- UPDATED CALL TO updateUser ---
+    const user = await updateUser(payload.sub, { name, avatar, year });
 
     return NextResponse.json({ ok: true, user });
   } catch (err) {

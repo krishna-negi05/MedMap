@@ -14,7 +14,6 @@ import {
   User as UserIcon,
   ChevronDown,
   LayoutDashboard,
-  Bookmark,
   Sparkles,
   CreditCard,
   Moon,
@@ -48,12 +47,13 @@ export default function Navbar() {
   const [sessionUser, setSessionUser] = useState(undefined); 
   const [sessionLoading, setSessionLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(false); // State for visual toggle
   
   // Refs
   const menuRef = useRef(null);
   const btnRef = useRef(null);
 
-  // --- Auth & Session Logic ---
+  // --- Auth & Session Logic (Updated to load theme) ---
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -62,8 +62,23 @@ export default function Navbar() {
         const res = await fetch('/api/auth/session');
         const json = await res.json();
         if (!mounted) return;
-        if (json?.ok && json?.user) setSessionUser(json.user);
-        else setSessionUser(null);
+        
+        if (json?.ok && json?.user) {
+          setSessionUser(json.user);
+          
+          // 1. Determine theme preference: DB > System preference > Default light
+          const dbTheme = json.user.theme;
+          const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const preferredTheme = dbTheme || (systemPrefersDark ? 'dark' : 'light');
+
+          // 2. Apply theme and set state
+          const isDark = preferredTheme === 'dark';
+          setDarkMode(isDark);
+          document.documentElement.classList.toggle('dark', isDark);
+
+        } else {
+          setSessionUser(null);
+        }
       } catch {
         if (mounted) setSessionUser(null);
       } finally {
@@ -72,6 +87,35 @@ export default function Navbar() {
     })();
     return () => { mounted = false; };
   }, []);
+
+  // --- NEW: Theme Toggle and Save Handler ---
+  const toggleTheme = async () => {
+    const newMode = !darkMode;
+    setDarkMode(newMode);
+    document.documentElement.classList.toggle('dark', newMode);
+
+    if (sessionUser) {
+        // Save preference to the database (using existing /api/user/update)
+        const newThemeValue = newMode ? 'dark' : 'light';
+        try {
+            // Include existing required fields (name, avatar, year) + new theme field
+            await fetch('/api/user/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    name: sessionUser.name, 
+                    avatar: sessionUser.avatar, 
+                    year: sessionUser.year,
+                    theme: newThemeValue // Save the new theme value
+                }),
+            });
+            router.refresh(); // Refresh session data in app
+        } catch (e) {
+            console.error("Failed to save theme preference:", e);
+        }
+    }
+  };
+
 
   const handleLogout = async () => {
     try {
@@ -166,7 +210,7 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-teal-100 text-slate-800 shadow-sm">
+      <nav className="fixed top-0 left-0 w-full z-50 bg-white/80 backdrop-blur-md border-b border-teal-100 text-slate-800 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             
@@ -191,7 +235,7 @@ export default function Navbar() {
             {/* Right Side Actions */}
             <div className="flex items-center gap-3 relative">
               
-              {/* Profile Trigger Button (Optimized) */}
+              {/* Profile Trigger Button */}
               <button
                 ref={btnRef}
                 onClick={() => { if (!onAuthPage) setMenuOpen(v => !v); }}
@@ -199,9 +243,7 @@ export default function Navbar() {
                 className={`
                   group flex items-center gap-2 transition-all outline-none
                   ${onAuthPage ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                  /* Mobile: Simple circle */
                   p-0.5 rounded-full
-                  /* Desktop: Pill shape with border & background */
                   sm:p-1.5 sm:pl-1.5 sm:pr-3 sm:bg-teal-50 sm:border sm:border-teal-100 sm:hover:bg-white sm:hover:shadow-sm
                   ${menuOpen ? 'ring-2 ring-teal-100 ring-offset-2' : ''}
                 `}
@@ -217,7 +259,7 @@ export default function Navbar() {
                   )}
                 </div>
                 
-                {/* Text Label - Hidden on Mobile, Visible on Desktop */}
+                {/* Text Label */}
                 <div className={`hidden sm:flex items-center gap-2 ${onAuthPage ? 'text-slate-400' : 'text-teal-900'}`}>
                    <div className="flex flex-col items-start leading-none">
                       <span className="text-xs font-bold max-w-[100px] truncate">
@@ -229,7 +271,7 @@ export default function Navbar() {
               </button>
 
               {/* ------------------------------------------------ */}
-              {/* POPUP MENU                                     */}
+              {/* POPUP MENU (The Sidebar)                         */}
               {/* ------------------------------------------------ */}
               {menuOpen && (
                 <div
@@ -255,7 +297,6 @@ export default function Navbar() {
                           <p className="text-xs text-slate-500 truncate">{sessionUser.email}</p>
                           <div className="mt-1 flex items-center gap-1">
                              <span className="text-[10px] bg-teal-50 text-teal-700 px-1.5 py-0.5 rounded border border-teal-100 font-medium">Free Plan</span>
-                             <Link href="/upgrade" className="text-[10px] text-teal-600 hover:underline">Upgrade</Link>
                           </div>
                         </div>
                       </div>
@@ -278,31 +319,25 @@ export default function Navbar() {
                   <div className="py-2 flex flex-col gap-0.5">
                     {sessionUser ? (
                       <>
-                        {/* Learning Section */}
-                        <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Learning</div>
+                        {/* 1. Dashboard */}
                         <MenuItem href="/dashboard" icon={LayoutDashboard} label="Dashboard" />
-                        <MenuItem href="/my-cases" icon={Bookmark} label="Saved Cases" />
-                        <MenuItem href="/roadmap" icon={MapIcon} label="My Progress" />
                         
-                        <div className="my-1.5 border-t border-slate-50" />
+                        <div className="my-1.5 border-t border-slate-100" />
                         
-                        {/* Account Section */}
+                        {/* 2. Settings Group */}
                         <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Settings</div>
                         <MenuItem href="/profile" icon={UserIcon} label="Profile" />
-                        <MenuItem href="/billing" icon={CreditCard} label="Subscription" badge="PRO" />
                         <MenuItem href="/settings" icon={Settings} label="Preferences" />
                         
-                        {/* Feature Toggle (Mockup) */}
-                        <button className="flex items-center justify-between w-[calc(100%-16px)] mx-2 px-3 py-2.5 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors">
-                          <div className="flex items-center gap-3">
-                             <Moon size={16} className="text-slate-400" />
-                             <span>Dark Mode</span>
-                          </div>
-                          {/* Simple Toggle Switch UI */}
-                          <div className="w-8 h-4 bg-slate-200 rounded-full relative">
-                             <div className="w-3 h-3 bg-white rounded-full absolute left-0.5 top-0.5 shadow-sm"></div>
-                          </div>
-                        </button>
+                        {/* Dark Mode Toggle (Now functional) */}
+                       
+                        <div className="my-1.5 border-t border-slate-100" />
+
+                        {/* 3. Help Center & AI Chatbot */}
+                        <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Support</div>
+                        <MenuItem href="/help" icon={HelpCircle} label="Help Center (AI)" badge="AI" />
+                        <MenuItem href="/feedback" icon={MessageSquare} label="Feedback" />
+                        <MenuItem href="/privacy" icon={Shield} label="Privacy" />
                       </>
                     ) : (
                        // Guest Links
@@ -310,16 +345,10 @@ export default function Navbar() {
                         <MenuItem href="/features" icon={Sparkles} label="Features" />
                         <MenuItem href="/pricing" icon={CreditCard} label="Pricing" />
                         <MenuItem href="/about" icon={UserCircle} label="About Us" />
+                        <MenuItem href="/privacy" icon={Shield} label="Privacy" />
                        </>
                     )}
 
-                    <div className="my-1.5 border-t border-slate-100" />
-
-                    {/* Support & Legal */}
-                    <MenuItem href="/help" icon={HelpCircle} label="Help Center" />
-                    <MenuItem href="/feedback" icon={MessageSquare} label="Send Feedback" />
-                    <MenuItem href="/privacy" icon={Shield} label="Privacy & Terms" />
-                    
                     {sessionUser && (
                       <div className="mt-1 pt-1 border-t border-slate-100">
                           <MenuItem 

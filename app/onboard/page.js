@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, ArrowRight, User, Check, Sparkles, Stethoscope, Activity, Heart } from 'lucide-react';
+import { Loader2, ArrowRight, User, Check, Sparkles, Stethoscope, Activity, Heart, GraduationCap, ChevronDown } from 'lucide-react'; // Added GraduationCap and ChevronDown
 
 export default function OnboardPage() {
   const router = useRouter();
@@ -9,6 +9,7 @@ export default function OnboardPage() {
   const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState('');
   const [avatar, setAvatar] = useState('');
+  const [year, setYear] = useState(1); // <--- NEW STATE
   const [error, setError] = useState('');
 
   // 6 avatars
@@ -33,14 +34,15 @@ export default function OnboardPage() {
           return;
         }
 
-        // If user already has name+avatar → skip onboarding
-        if (data.user.name && data.user.avatar) {
+        // If user already has name+avatar AND year, skip onboarding
+        if (data.user.name && data.user.avatar && data.user.year) {
           router.push('/'); 
           return;
         }
 
-        // PRE-FILL NAME if available from Twitter/Google
+        // PRE-FILL NAME and YEAR if available
         if (data.user.name) setName(data.user.name);
+        if (data.user.year) setYear(data.user.year);
 
         setLoading(false);
       } catch {
@@ -62,7 +64,8 @@ export default function OnboardPage() {
       const res = await fetch('/api/auth/onboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, avatar }),
+        // --- UPDATED PAYLOAD with YEAR ---
+        body: JSON.stringify({ name, avatar, year: parseInt(year) }),
       });
 
       const data = await res.json();
@@ -128,7 +131,7 @@ export default function OnboardPage() {
         </div>
 
         {/* Name input */}
-        <div className="mb-10 group relative">
+        <div className="mb-6 group relative">
           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 ml-1">
             What should we call you?
           </label>
@@ -146,6 +149,34 @@ export default function OnboardPage() {
             />
           </div>
         </div>
+
+        {/* --- NEW YEAR SELECTOR --- */}
+        <div className="mb-10 group relative">
+          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 ml-1">
+            Which Year are you in?
+          </label>
+          <div className="relative transform transition-transform duration-200 focus-within:scale-[1.02]">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <div className="bg-teal-50 p-2 rounded-lg text-teal-600">
+                <GraduationCap size={20} />
+              </div>
+            </div>
+            <select
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+              className="w-full pl-14 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-slate-800 font-medium focus:outline-none focus:ring-4 focus:ring-teal-500/10 focus:border-teal-500 transition-all shadow-sm appearance-none"
+            >
+              <option value={1}>Year 1 (Pre-Clinical)</option>
+              <option value={2}>Year 2 (Para-Clinical)</option>
+              <option value={3}>Year 3 (Part 1 - ENT, Ophthalmology, PSM)</option>
+              <option value={4}>Year 4 (Part 2 - Final)</option>
+            </select>
+            <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                <ChevronDown size={18} className="text-slate-400"/>
+            </div>
+          </div>
+        </div>
+        {/* --- END NEW YEAR SELECTOR --- */}
 
         {/* Avatar picker */}
         <div className="mb-10">
