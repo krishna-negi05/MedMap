@@ -60,7 +60,7 @@ const STEPS_SCHEMA = {
 };
 
 const MOCK_CASE = { 
-  title: "Acute Chest Pain", 
+  title: "Acute Chest Pain (Sample)", 
   difficulty: "Intermediate", 
   vignette: { 
     intro: "A 55-year-old male presents with crushing chest pain radiating to the left arm and jaw.", 
@@ -96,14 +96,16 @@ export default function CasesPage() {
     } catch(e) { console.error(e); }
   };
   
+  // 🧠 FIX: Added 'no-store' to ensure we get the latest difficulty setting
   const fetchUserSettings = async () => {
     try {
-        const res = await fetch('/api/auth/session');
+        const res = await fetch('/api/auth/session', { cache: 'no-store' });
         const json = await res.json();
         if(json.ok && json.user?.defaultDifficulty) {
+            console.log("Setting Difficulty to:", json.user.defaultDifficulty); // Debug
             setDefaultDiff(json.user.defaultDifficulty);
         }
-    } catch(e) {}
+    } catch(e) { console.error("Failed to fetch settings", e); }
   };
 
   const handleGenerate = async () => {
@@ -157,7 +159,6 @@ export default function CasesPage() {
         // 2. Generate Questions
         setLoadingStep('Developing Clinical Logic...');
         
-        // 🧠 UPDATED: Asking for 4-5 options specifically
         const questionsPrompt = `
           Patient Case: "${vignetteData.vignette.intro}"
           History: "${vignetteData.vignette.history}"
@@ -335,7 +336,7 @@ export default function CasesPage() {
          <div className="grid lg:grid-cols-3 gap-6 md:gap-8">
             {/* Vitals & History Sidebar */}
             <div className="lg:col-span-1 space-y-4">
-                {/* 🧠 STYLED BACK BUTTON */}
+                {/* STYLED BACK BUTTON */}
                 <button onClick={() => setStarted(false)} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-teal-600 transition-all mb-4 font-bold text-sm px-4 py-2 rounded-xl shadow-sm w-fit">
                     <ArrowLeft size={16}/> Back to Case Details
                 </button>
