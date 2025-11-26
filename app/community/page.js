@@ -7,9 +7,13 @@ import {
   MessageCircle, HelpCircle, Coffee, Hash,
   Bone, Activity, FlaskConical, Bug, Pill, Scale,
   Ear, Eye as EyeIcon, HeartPulse, Baby, Stethoscope,
-  Scissors, Sparkles, Zap, Plus, ArrowUp, ArrowDown, Check, CheckCircle2
+  Scissors, Sparkles, Zap, Plus, ArrowUp, ArrowDown, Check, CheckCircle2,
+  ThumbsUp, Send, Type, List, Image as ImageIcon, Link as LinkIcon,
+  BarChart2, MoreHorizontal, Heart, Share2,
+  ChevronLeft, Paperclip, Smile, LogOut
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // --- 🎨 SIDEBAR THEMES ---
 const NAV_THEMES = {
@@ -63,8 +67,8 @@ export default function CommunityPage() {
     switch (activeTab) {
       case 'library': return <LibraryView />;
       case 'qa': return <QAView />;
-      case 'social': return <PlaceholderView title="Med Life" icon={Coffee} color="amber" desc="Discussions, Polls, and Rants (Reddit style)." />;
-      case 'groups': return <PlaceholderView title="Study Groups" icon={Hash} color="rose" desc="Real-time chat rooms for specific topics." />;
+      case 'social': return <SocialView />;
+      case 'groups': return <GroupsView />;
       default: return <LibraryView />;
     }
   };
@@ -101,6 +105,7 @@ export default function CommunityPage() {
   );
 }
 
+// ... (SidebarContent, NavButton remain unchanged)
 function SidebarContent({ activeTab, setActiveTab }) {
   return (
     <>
@@ -117,7 +122,7 @@ function SidebarContent({ activeTab, setActiveTab }) {
       <div className="space-y-2 mt-4">
         <NavButton id="library" label="Library" active={activeTab} onClick={setActiveTab} hint="Notes, PDFs & diagrams" />
         <NavButton id="qa" label="Q&A Forum" active={activeTab} onClick={setActiveTab} hint="Ask & resolve doubts" />
-        <NavButton id="social" label="Med Life" active={activeTab} onClick={setActiveTab} hint="Chats & polls" />
+        <NavButton id="social" label="Med Life" active={activeTab} onClick={setActiveTab} hint="Rants & Discussions" />
         <NavButton id="groups" label="Study Groups" active={activeTab} onClick={setActiveTab} hint="Topic rooms" />
       </div>
 
@@ -173,7 +178,943 @@ function PlaceholderView({ title, icon: Icon, desc, color }) {
   );
 }
 
-/* ==================== LIBRARY VIEW ==================== */
+/* ==================== GROUPS VIEW ==================== */
+
+function GroupsView() {
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    fetchGroups();
+    fetchUser();
+  }, []);
+
+  const fetchUser = async () => {
+    try {
+        const res = await fetch('/api/auth/session');
+        const data = await res.json();
+        if (data.ok) setCurrentUser(data.user);
+    } catch(e) {}
+  };
+
+  const fetchGroups = async (query = '') => {
+    setLoading(true);
+    try {
+      const url = query ? `/api/community/groups?search=${query}` : '/api/community/groups';
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.ok) setGroups(json.data);
+    } catch(e) { toast.error("Failed to load groups"); }
+    finally { setLoading(false); }
+  };
+
+  const handleSearch = (e) => {
+      setSearch(e.target.value);
+      if (e.key === 'Enter') fetchGroups(e.target.value);
+  };
+
+  // If a group is selected, show the Chat Room
+  if (selectedGroup) {
+    return <ChatRoom group={selectedGroup} currentUser={currentUser} onBack={() => { setSelectedGroup(null); fetchGroups(); }} />;
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto animate-in fade-in duration-500">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+            <h1 className="text-3xl font-black text-slate-900">Study Groups</h1>
+            <p className="text-slate-500 font-medium">Join topic-based rooms or create your own squad.</p>
+        </div>
+        <button onClick={() => setShowCreate(true)} className="bg-rose-600 text-white px-6 py-3 rounded-2xl font-bold shadow-xl shadow-rose-200 flex items-center gap-2 hover:bg-rose-700 transition-all active:scale-95">
+            <Plus size={20}/> Create Group
+        </button>
+      </div>
+
+      {/* Search Bar for Groups */}
+      <div className="relative w-full mb-8">
+            <Search size={20} className="text-slate-400 absolute left-4 top-3.5 group-focus-within:text-rose-500 transition-colors"/>
+            <input 
+                type="text" placeholder="Search groups..." 
+                className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-rose-500/20 focus:border-rose-500 outline-none transition-all font-bold text-slate-700 shadow-sm"
+                value={search} 
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={handleSearch}
+            />
+      </div>
+
+      {showCreate && <CreateGroupModal onClose={() => setShowCreate(false)} onRefresh={fetchGroups} />}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {loading ? (
+            <div className="col-span-2 flex justify-center py-20"><Loader2 className="animate-spin w-8 h-8 text-rose-400"/></div>
+        ) : groups.length === 0 ? (
+            <div className="col-span-2 text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                <p className="text-slate-400 font-bold">No active groups found.</p>
+            </div>
+        ) : (
+            groups.map(group => (
+                <GroupCard key={group.id} group={group} onSelect={setSelectedGroup} />
+            ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GroupCard({ group, onSelect }) {
+  const [joining, setJoining] = useState(false);
+
+  const handleJoin = async (e) => {
+    e.stopPropagation();
+    setJoining(true);
+    try {
+        const res = await fetch('/api/community/groups/join', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ groupId: group.id })
+        });
+        if (res.ok) {
+            toast.success(`Joined ${group.name}!`);
+            onSelect({ ...group, isMember: true }); // Optimistic update
+        }
+    } catch(e) { toast.error("Failed to join"); }
+    finally { setJoining(false); }
+  };
+
+  return (
+    <div 
+        onClick={() => group.isMember && onSelect(group)}
+        className={`bg-white p-6 rounded-3xl border border-slate-200 shadow-sm transition-all group relative overflow-hidden ${group.isMember ? 'cursor-pointer hover:border-rose-300 hover:shadow-md' : ''}`}
+    >
+        <div className="flex items-start justify-between mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-rose-100 to-orange-100 rounded-2xl flex items-center justify-center text-rose-600 shadow-inner">
+                <Hash size={24}/>
+            </div>
+            {group.isMember ? (
+                <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide flex items-center gap-1">
+                    Joined <Check size={12}/>
+                </span>
+            ) : (
+                <button 
+                    onClick={handleJoin} 
+                    disabled={joining}
+                    className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50"
+                >
+                    {joining ? <Loader2 size={14} className="animate-spin"/> : 'Join'}
+                </button>
+            )}
+        </div>
+        
+        <h3 className="font-bold text-lg text-slate-900 mb-1">{group.name}</h3>
+        <p className="text-slate-500 text-sm line-clamp-2 mb-4 h-10">{group.description || "No description provided."}</p>
+        
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-400 border-t border-slate-100 pt-4">
+            <Users size={14}/> {group.memberCount} Members
+        </div>
+    </div>
+  );
+}
+
+function ChatRoom({ group, currentUser, onBack }) {
+    const [messages, setMessages] = useState([]);
+    const [input, setInput] = useState('');
+    const [sending, setSending] = useState(false);
+    const [attachment, setAttachment] = useState(null);
+    const [uploading, setUploading] = useState(false);
+    const [showReactionPicker, setShowReactionPicker] = useState(null); // ID of message to react to
+    const scrollRef = useRef(null);
+
+    useEffect(() => {
+        fetchMessages();
+        const interval = setInterval(fetchMessages, 3000); // Poll every 3s for real-time feel
+        return () => clearInterval(interval);
+    }, [group.id]);
+
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, [messages]);
+
+    const fetchMessages = async () => {
+        try {
+            const res = await fetch(`/api/community/groups/${group.id}/messages`);
+            const json = await res.json();
+            if (json.ok) {
+                 // Only update if length changed or last message ID changed to avoid jitters, 
+                 // or just naive replace for MVP (Simplest)
+                 setMessages(json.data);
+            }
+        } catch(e) {}
+    };
+
+    const handleFileSelect = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+            const uploadData = await uploadRes.json();
+            if (uploadData.ok) {
+                setAttachment({ url: uploadData.url, type: uploadData.type });
+                toast.success("File attached");
+            } else {
+                throw new Error('Upload failed');
+            }
+        } catch (error) {
+            toast.error("Upload failed");
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleSend = async () => {
+        if (!input.trim() && !attachment) return;
+        
+        const msgData = {
+            content: input,
+            attachmentUrl: attachment?.url,
+            attachmentType: attachment?.type
+        };
+
+        const tempMsg = {
+            id: Date.now().toString(),
+            content: input,
+            attachmentUrl: attachment?.url,
+            attachmentType: attachment?.type,
+            senderId: currentUser.id,
+            sender: currentUser,
+            createdAt: new Date().toISOString(),
+            reactions: [],
+            reactionCounts: {},
+            temp: true
+        };
+        
+        // Optimistic update
+        setMessages(prev => [...prev, tempMsg]);
+        setInput('');
+        setAttachment(null);
+        setSending(true);
+
+        try {
+            await fetch(`/api/community/groups/${group.id}/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(msgData)
+            });
+            // Ensure we fetch the real message (and its ID) immediately
+            fetchMessages(); 
+        } catch(e) { toast.error("Failed to send"); }
+        finally { setSending(false); }
+    };
+
+    const handleLeave = async () => {
+        // Confirmation toast instead of alert
+        toast((t) => (
+            <div className="flex flex-col gap-2 min-w-[200px]">
+                <p className="text-sm font-bold text-slate-800">Leave this group?</p>
+                <div className="flex gap-2">
+                    <button onClick={() => toast.dismiss(t.id)} className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-bold transition-colors">Cancel</button>
+                    <button onClick={() => {
+                        toast.dismiss(t.id);
+                        performLeave();
+                    }} className="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition-colors">Leave</button>
+                </div>
+            </div>
+        ));
+    };
+
+    const performLeave = async () => {
+        try {
+            const res = await fetch('/api/community/groups/leave', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ groupId: group.id })
+            });
+            if (res.ok) {
+                toast.success("Left group");
+                onBack();
+            } else {
+                throw new Error("Failed");
+            }
+        } catch(e) {
+            toast.error("Failed to leave group");
+        }
+    };
+
+    const handleReaction = async (messageId, emoji) => {
+        setShowReactionPicker(null); // Close picker
+        
+        // Check if it's a temp message (no real ID), skip if so
+        const targetMsg = messages.find(m => m.id === messageId);
+        if (targetMsg?.temp) return;
+
+        // Optimistic update
+        setMessages(prev => prev.map(msg => {
+            if (msg.id !== messageId) return msg;
+            
+            const counts = { ...(msg.reactionCounts || {}) };
+            if (!counts[emoji]) counts[emoji] = { count: 0, hasReacted: false };
+            
+            if (counts[emoji].hasReacted) {
+                counts[emoji] = { ...counts[emoji], count: counts[emoji].count - 1, hasReacted: false };
+                if (counts[emoji].count <= 0) delete counts[emoji];
+            } else {
+                counts[emoji] = { ...counts[emoji], count: counts[emoji].count + 1, hasReacted: true };
+            }
+            return { ...msg, reactionCounts: counts };
+        }));
+
+        try {
+            await fetch('/api/community/messages/react', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messageId, emoji })
+            });
+            // No immediate fetch needed as UI is updated optimistically, 
+            // and polling will sync eventually
+        } catch (error) {
+            fetchMessages(); // Revert on error
+        }
+    };
+
+    return (
+        <div className="h-[calc(100vh-140px)] flex flex-col bg-white rounded-[2rem] shadow-xl border border-slate-200 overflow-hidden">
+            {/* Header */}
+            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-4">
+                <button onClick={onBack} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
+                    <ChevronLeft size={24}/>
+                </button>
+                <div className="flex-1">
+                    <h3 className="font-bold text-slate-900 text-lg">{group.name}</h3>
+                    <p className="text-xs text-slate-500 flex items-center gap-1"><Users size={10}/> {group.memberCount} members</p>
+                </div>
+                <button onClick={handleLeave} className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-full transition-colors" title="Leave Group">
+                    <LogOut size={20}/>
+                </button>
+            </div>
+
+            {/* Messages */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/30">
+                {messages.map((msg, i) => {
+                    const isMe = msg.senderId === currentUser?.id;
+                    const hasAttachment = !!msg.attachmentUrl;
+                    return (
+                        <div key={msg.id || i} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''} group relative`}>
+                            {!isMe && (
+                                <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-[10px] font-bold text-indigo-700 shrink-0 self-end mb-2">
+                                    {msg.sender?.name?.[0] || 'U'}
+                                </div>
+                            )}
+                            <div className={`relative max-w-[70%]`}>
+                                {!isMe && <span className="text-[10px] font-bold text-slate-400 block mb-1 ml-1">{msg.sender?.name}</span>}
+                                
+                                <div className={`p-3 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-rose-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none shadow-sm'}`}>
+                                    {hasAttachment && (
+                                        <div className="mb-2 rounded-lg overflow-hidden bg-black/5">
+                                            {msg.attachmentType === 'image' ? (
+                                                <img src={msg.attachmentUrl} alt="attachment" className="max-w-full h-auto rounded-lg" />
+                                            ) : (
+                                                <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-3 rounded-lg hover:bg-black/10 transition-colors">
+                                                    <FileText size={16} className={isMe ? "text-white" : "text-slate-600"}/> 
+                                                    <span className="underline">Document</span>
+                                                </a>
+                                            )}
+                                        </div>
+                                    )}
+                                    {msg.content}
+                                    <span className={`text-[9px] block mt-1 text-right ${isMe ? 'text-rose-200' : 'text-slate-300'}`}>
+                                        {new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                    </span>
+                                </div>
+
+                                {/* Reactions Display */}
+                                {msg.reactionCounts && Object.keys(msg.reactionCounts).length > 0 && (
+                                    <div className={`flex gap-1 mt-1 flex-wrap ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                        {Object.entries(msg.reactionCounts).map(([emoji, data]) => (
+                                            <button 
+                                                key={emoji}
+                                                onClick={() => handleReaction(msg.id, emoji)}
+                                                className={`text-[10px] px-1.5 py-0.5 rounded-full border flex items-center gap-1 transition-colors ${data.hasReacted ? 'bg-rose-100 border-rose-200 text-rose-700' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                                            >
+                                                {emoji} {data.count > 1 && <span className="font-bold">{data.count}</span>}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Reaction Picker (On Click of Smile Icon) */}
+                                {showReactionPicker === msg.id && (
+                                    <div className={`absolute -top-10 ${isMe ? 'right-0' : 'left-0'} bg-white shadow-xl border border-slate-200 rounded-full p-1 flex gap-1 z-20 animate-in zoom-in-95`}>
+                                        {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
+                                            <button 
+                                                key={emoji}
+                                                onClick={() => handleReaction(msg.id, emoji)}
+                                                className="hover:scale-125 transition-transform text-xl p-1"
+                                            >
+                                                {emoji}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Add Reaction Trigger (Visible on Hover) */}
+                                <button 
+                                    onClick={() => setShowReactionPicker(showReactionPicker === msg.id ? null : msg.id)}
+                                    className={`absolute top-1/2 -translate-y-1/2 ${isMe ? '-left-8' : '-right-8'} opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-rose-500 p-1`}
+                                >
+                                    <Smile size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Input */}
+            <div className="p-4 bg-white border-t border-slate-100">
+                {attachment && (
+                    <div className="flex items-center gap-2 mb-2 bg-slate-50 p-2 rounded-lg w-fit border border-slate-200 animate-in slide-in-from-bottom-2">
+                        <span className="text-xs font-bold text-slate-600 flex items-center gap-1">
+                            {attachment.type === 'image' ? <ImageIcon size={14}/> : <FileText size={14}/>} 
+                            Attached
+                        </span>
+                        <button onClick={() => setAttachment(null)} className="text-slate-400 hover:text-red-500 transition-colors"><X size={16}/></button>
+                    </div>
+                )}
+                <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:border-rose-400 focus-within:ring-2 focus-within:ring-rose-100 transition-all">
+                    <label className="p-2 text-slate-400 hover:text-slate-600 cursor-pointer hover:bg-slate-200 rounded-full transition-colors">
+                        {uploading ? <Loader2 size={20} className="animate-spin"/> : <Paperclip size={20}/>}
+                        <input type="file" className="hidden" onChange={handleFileSelect} accept="image/*,application/pdf"/>
+                    </label>
+                    <input 
+                        className="flex-1 bg-transparent outline-none px-2 text-sm font-medium text-slate-700 placeholder:text-slate-400"
+                        placeholder="Type a message..."
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                    />
+                    <button 
+                        onClick={handleSend} 
+                        disabled={(!input.trim() && !attachment) || sending}
+                        className="p-2 bg-rose-600 text-white rounded-full hover:bg-rose-700 disabled:opacity-50 transition-transform active:scale-95 shadow-md"
+                    >
+                        <Send size={16}/>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function CreateGroupModal({ onClose, onRefresh }) {
+    const [name, setName] = useState('');
+    const [desc, setDesc] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async () => {
+        if (!name.trim()) return toast.error("Group name required");
+        setLoading(true);
+        try {
+            const res = await fetch('/api/community/groups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, description: desc })
+            });
+            if (res.ok) {
+                toast.success("Group Created!");
+                onRefresh();
+                onClose();
+            } else throw new Error();
+        } catch(e) { toast.error("Failed to create"); }
+        finally { setLoading(false); }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 animate-in zoom-in-95">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-bold text-xl text-slate-900">Create Study Group</h3>
+                    <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
+                </div>
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase ml-1">Group Name</label>
+                        <input 
+                            autoFocus
+                            value={name} onChange={e => setName(e.target.value)}
+                            className="w-full p-3 bg-slate-50 border rounded-xl font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                            placeholder="e.g. Final Year Surgery Prep"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase ml-1">Description</label>
+                        <textarea 
+                            value={desc} onChange={e => setDesc(e.target.value)}
+                            className="w-full p-3 bg-slate-50 border rounded-xl text-sm text-slate-600 outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 h-24 resize-none"
+                            placeholder="What's this group about?"
+                        />
+                    </div>
+                    <button onClick={handleSubmit} disabled={loading} className="w-full py-3 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-700 transition-all disabled:opacity-50">
+                        {loading ? <Loader2 className="animate-spin mx-auto"/> : 'Create Group'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// --- SOCIAL VIEW (Med Life) ---
+
+function SocialView() {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [filter, setFilter] = useState('all');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    fetchPosts();
+    fetchUser();
+  }, []);
+
+  const fetchUser = async () => {
+    try {
+        const res = await fetch('/api/auth/session');
+        const data = await res.json();
+        if (data.ok) setCurrentUser(data.user);
+    } catch(e) {}
+  };
+
+  const fetchPosts = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/community/posts');
+      const json = await res.json();
+      if (json.ok) setPosts(json.data);
+    } catch(e) { toast.error("Failed to load feed"); }
+    finally { setLoading(false); }
+  };
+
+  const filteredPosts = posts.filter(post => 
+    post.content?.toLowerCase().includes(search.toLowerCase()) ||
+    post.user?.name?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="max-w-2xl mx-auto animate-in fade-in duration-500">
+      {/* Header & Search */}
+      <div className="flex flex-col gap-6 mb-8">
+        <div className="flex justify-between items-center">
+            <div>
+                <h1 className="text-3xl font-black text-slate-900">Med Life</h1>
+                <p className="text-slate-500 font-medium">Campus buzz, rants & polls.</p>
+            </div>
+            <button onClick={() => setShowCreate(true)} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold shadow-xl flex items-center gap-2 hover:bg-slate-800 transition-all active:scale-95">
+                <Plus size={20}/> New Post
+            </button>
+        </div>
+
+        {/* Search Bar */}
+        <div className="relative w-full">
+            <Search size={20} className="text-slate-400 absolute left-4 top-3.5 group-focus-within:text-amber-500 transition-colors"/>
+            <input 
+                type="text" placeholder="Search discussions..." 
+                className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all font-bold text-slate-700 shadow-sm"
+                value={search} onChange={(e) => setSearch(e.target.value)}
+            />
+        </div>
+      </div>
+
+      {/* Create Post Modal */}
+      <AnimatePresence>
+        {showCreate && <CreatePostModal onClose={() => setShowCreate(false)} onRefresh={fetchPosts} user={currentUser} />}
+      </AnimatePresence>
+
+      {/* Feed */}
+      {loading ? (
+        <div className="flex justify-center py-20"><Loader2 className="animate-spin w-8 h-8 text-slate-400"/></div>
+      ) : filteredPosts.length === 0 ? (
+        <div className="text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+            <p className="text-slate-400 font-bold">No posts found.</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+            {filteredPosts.map(post => (
+                <PostCard key={post.id} post={post} currentUser={currentUser} onRefresh={fetchPosts} />
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreatePostModal({ onClose, onRefresh, user }) {
+  const [type, setType] = useState('text'); // text, poll
+  const [content, setContent] = useState('');
+  const [options, setOptions] = useState(['', '']);
+  const [uploading, setUploading] = useState(false);
+
+  const handleOptionChange = (index, value) => {
+    const newOptions = [...options];
+    newOptions[index] = value;
+    setOptions(newOptions);
+  };
+
+  const addOption = () => { if (options.length < 4) setOptions([...options, '']); };
+
+  const handleSubmit = async () => {
+    if (!content.trim()) return toast.error("Post content cannot be empty");
+    if (type === 'poll' && options.some(o => !o.trim())) return toast.error("Fill all poll options");
+
+    setUploading(true);
+    try {
+        const res = await fetch('/api/community/posts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                content,
+                type,
+                pollOptions: type === 'poll' ? options : undefined
+            })
+        });
+        if (res.ok) {
+            toast.success("Posted successfully!");
+            onRefresh();
+            onClose();
+        } else throw new Error();
+    } catch(e) { toast.error("Failed to post"); }
+    finally { setUploading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4">
+        <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+            className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100"
+        >
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="font-bold text-slate-800">Create Post</h3>
+                <button onClick={onClose}><X size={20} className="text-slate-400 hover:text-slate-700"/></button>
+            </div>
+            
+            <div className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center font-bold text-teal-700">
+                        {user?.name?.[0] || 'U'}
+                    </div>
+                    <div className="flex-1">
+                        <p className="font-bold text-sm text-slate-900">{user?.name}</p>
+                        <button className="text-xs text-slate-400 border border-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                            Public <Users size={10}/>
+                        </button>
+                    </div>
+                </div>
+
+                <textarea 
+                    className="w-full min-h-[100px] text-lg outline-none placeholder:text-slate-300 text-slate-800 resize-none mb-4"
+                    placeholder="What's happening in med school?"
+                    value={content}
+                    onChange={e => setContent(e.target.value)}
+                    autoFocus
+                />
+
+                {type === 'poll' && (
+                    <div className="space-y-2 mb-4 animate-in slide-in-from-top-2">
+                        {options.map((opt, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                                <input 
+                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                                    placeholder={`Option ${i + 1}`}
+                                    value={opt}
+                                    onChange={(e) => handleOptionChange(i, e.target.value)}
+                                />
+                            </div>
+                        ))}
+                        {options.length < 4 && (
+                            <button onClick={addOption} className="text-xs font-bold text-amber-600 hover:underline ml-1">+ Add Option</button>
+                        )}
+                    </div>
+                )}
+
+                <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+                    <div className="flex gap-2">
+                        <button onClick={() => setType('text')} className={`p-2 rounded-xl transition-all ${type === 'text' ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:bg-slate-50'}`}>
+                            <Type size={20}/>
+                        </button>
+                        <button onClick={() => setType('poll')} className={`p-2 rounded-xl transition-all ${type === 'poll' ? 'bg-amber-50 text-amber-600' : 'text-slate-400 hover:bg-slate-50'}`}>
+                            <BarChart2 size={20}/>
+                        </button>
+                        <button className="p-2 rounded-xl text-slate-300 cursor-not-allowed"><ImageIcon size={20}/></button>
+                    </div>
+                    <button 
+                        onClick={handleSubmit} 
+                        disabled={uploading || !content.trim()} 
+                        className="bg-slate-900 text-white px-6 py-2 rounded-xl font-bold text-sm hover:bg-slate-800 disabled:opacity-50 transition-all active:scale-95"
+                    >
+                        {uploading ? <Loader2 className="animate-spin w-4 h-4"/> : 'Post'}
+                    </button>
+                </div>
+            </div>
+        </motion.div>
+    </div>
+  );
+}
+
+function PostCard({ post, currentUser, onRefresh }) {
+  const [isLiked, setIsLiked] = useState(post.isLiked);
+  const [likesCount, setLikesCount] = useState(post.likesCount);
+  const [showComments, setShowComments] = useState(false);
+  const isOwner = currentUser?.id === post.userId;
+
+  const handleLike = async () => {
+    const prevLiked = isLiked;
+    const prevCount = likesCount;
+    
+    setIsLiked(!isLiked);
+    setLikesCount(prevLiked ? likesCount - 1 : likesCount + 1);
+
+    try {
+        await fetch('/api/community/posts/like', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ postId: post.id })
+        });
+    } catch (e) {
+        // Revert on error
+        setIsLiked(prevLiked);
+        setLikesCount(prevCount);
+    }
+  };
+
+  const handleDelete = async () => {
+      if(!confirm("Delete this post?")) return;
+      await fetch(`/api/community/posts/${post.id}`, { method: 'DELETE' });
+      onRefresh();
+  };
+
+  const handleShare = () => {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+        toast.success("Link copied to clipboard!");
+    }).catch(() => {
+        toast.error("Failed to copy link");
+    });
+  };
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
+       {/* Header */}
+       <div className="flex justify-between items-start mb-4">
+          <div className="flex items-center gap-3">
+             <div className="w-10 h-10 bg-gradient-to-br from-slate-100 to-slate-300 rounded-full flex items-center justify-center text-slate-700 font-bold border-2 border-white shadow-sm">
+                {post.user?.name?.[0] || 'U'}
+             </div>
+             <div>
+                <h4 className="font-bold text-slate-900 text-sm">{post.user?.name}</h4>
+                <p className="text-xs text-slate-400">{new Date(post.createdAt).toLocaleDateString()}</p>
+             </div>
+          </div>
+          {isOwner && <button onClick={handleDelete} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>}
+       </div>
+
+       {/* Content */}
+       <div className="mb-4">
+          <p className="text-slate-700 leading-relaxed whitespace-pre-wrap text-[15px]">{post.content}</p>
+       </div>
+
+       {/* Poll Render */}
+       {post.type === 'poll' && (
+           <PollComponent post={post} currentUser={currentUser} />
+       )}
+
+       {/* Footer Actions */}
+       <div className="flex items-center gap-6 pt-4 border-t border-slate-100 mt-4">
+          <button onClick={handleLike} className={`flex items-center gap-2 text-sm font-bold transition-colors ${isLiked ? 'text-pink-600' : 'text-slate-500 hover:text-pink-500'}`}>
+             <Heart size={18} fill={isLiked ? "currentColor" : "none"} className={isLiked ? "animate-bounce" : ""}/> {likesCount}
+          </button>
+          <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-teal-600 transition-colors">
+             <MessageCircle size={18}/> {post.commentsCount}
+          </button>
+          <button onClick={handleShare} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors ml-auto">
+             <Share2 size={18}/>
+          </button>
+       </div>
+
+       {/* Comments Section */}
+       {showComments && <CommentsSection postId={post.id} currentUser={currentUser} />}
+    </div>
+  );
+}
+
+function PollComponent({ post, currentUser }) {
+    const [options, setOptions] = useState(post.pollOptions);
+    const [totalVotes, setTotalVotes] = useState(options.reduce((a,b)=>a+b.count,0));
+    const [userVotedId, setUserVotedId] = useState(post.userVotedOptionId);
+    const [loading, setLoading] = useState(false);
+
+    const handleVote = async (optionId) => {
+        if (loading) return;
+        setLoading(true);
+        
+        const prevOptions = [...options];
+        const prevTotal = totalVotes;
+        const prevUserVotedId = userVotedId;
+
+        let newOptions = [...options];
+        let newTotal = totalVotes;
+        let newUserVotedId = userVotedId;
+
+        if (userVotedId === optionId) {
+            // Toggle OFF
+            newOptions = newOptions.map(opt => 
+                opt.id === optionId ? { ...opt, count: Math.max(0, opt.count - 1) } : opt
+            );
+            newTotal = Math.max(0, newTotal - 1);
+            newUserVotedId = null;
+        } else {
+            // Vote ON or Switch
+            newOptions = newOptions.map(opt => {
+                if (opt.id === optionId) return { ...opt, count: opt.count + 1 }; // Add to new
+                if (opt.id === userVotedId) return { ...opt, count: Math.max(0, opt.count - 1) }; // Remove from old
+                return opt;
+            });
+            
+            if (!userVotedId) {
+                newTotal += 1; // New vote
+            } 
+            // If switching, total remains same
+            newUserVotedId = optionId;
+        }
+        
+        setOptions(newOptions);
+        setTotalVotes(newTotal);
+        setUserVotedId(newUserVotedId);
+
+        try {
+            await fetch('/api/community/posts/vote', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ postId: post.id, optionId })
+            });
+        } catch(e) {
+            // Revert
+            setOptions(prevOptions);
+            setTotalVotes(prevTotal);
+            setUserVotedId(prevUserVotedId);
+            toast.error("Vote failed");
+        } finally { setLoading(false); }
+    };
+
+    return (
+        <div className="space-y-2 my-4">
+            {options.map(opt => {
+                const percentage = totalVotes === 0 ? 0 : Math.round((opt.count / totalVotes) * 100);
+                const isSelected = userVotedId === opt.id;
+                
+                return (
+                    <button 
+                        key={opt.id}
+                        onClick={() => handleVote(opt.id)}
+                        disabled={loading}
+                        className="relative w-full text-left h-10 rounded-lg overflow-hidden bg-slate-50 border border-slate-200 transition-all hover:border-amber-300 group"
+                    >
+                        {/* Progress Bar */}
+                        {totalVotes > 0 && (
+                            <div className={`absolute top-0 left-0 h-full transition-all duration-500 ${isSelected ? 'bg-amber-100' : 'bg-slate-200/50'}`} style={{ width: `${percentage}%` }}></div>
+                        )}
+                        
+                        {/* Text & Percent */}
+                        <div className="absolute inset-0 flex items-center justify-between px-4 z-10">
+                            <span className={`text-sm font-bold ${isSelected ? 'text-amber-700' : 'text-slate-700'}`}>
+                                {opt.text} {isSelected && <CheckCircle2 size={14} className="inline ml-1"/>}
+                            </span>
+                            {totalVotes > 0 && <span className="text-xs font-bold text-slate-500">{percentage}%</span>}
+                        </div>
+                    </button>
+                );
+            })}
+            <div className="text-xs text-slate-400 font-bold px-1">{totalVotes} votes</div>
+        </div>
+    );
+}
+
+function CommentsSection({ postId, currentUser }) {
+    const [comments, setComments] = useState([]);
+    const [newComment, setNewComment] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+
+    useEffect(() => {
+        fetchComments();
+    }, []);
+
+    const fetchComments = async () => {
+        try {
+            const res = await fetch(`/api/community/posts/comment?postId=${postId}`);
+            const json = await res.json();
+            if (json.ok) setComments(json.data);
+        } catch(e) {} finally { setLoading(false); }
+    };
+
+    const handlePost = async () => {
+        if(!newComment.trim()) return;
+        setSubmitting(true);
+        try {
+            const res = await fetch('/api/community/posts/comment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ postId, content: newComment })
+            });
+            const json = await res.json();
+            if (json.ok) {
+                setComments([...comments, json.data]);
+                setNewComment('');
+            }
+        } catch(e) {} finally { setSubmitting(false); }
+    };
+
+    return (
+        <div className="pt-4 mt-4 border-t border-slate-100 bg-slate-50/50 -mx-6 px-6 pb-4 rounded-b-3xl animate-in slide-in-from-top-2">
+            <div className="space-y-4 max-h-60 overflow-y-auto mb-4 pr-2 custom-scrollbar">
+                {loading ? <div className="text-center text-xs text-slate-400">Loading comments...</div> : 
+                 comments.length === 0 ? <div className="text-center text-xs text-slate-400">No comments yet.</div> :
+                 comments.map(c => (
+                    <div key={c.id} className="flex gap-3 text-sm">
+                        <div className="w-6 h-6 bg-slate-200 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-600 shrink-0">
+                            {c.user.name?.[0]}
+                        </div>
+                        <div className="bg-white p-3 rounded-2xl rounded-tl-none border border-slate-200 shadow-sm">
+                            <span className="font-bold text-slate-900 text-xs block mb-0.5">{c.user.name}</span>
+                            <p className="text-slate-600">{c.content}</p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <div className="relative">
+                <input 
+                    className="w-full bg-white border border-slate-200 rounded-full pl-4 pr-12 py-2.5 text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="Write a comment..."
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handlePost()}
+                />
+                <button onClick={handlePost} disabled={submitting || !newComment} className="absolute right-1 top-1 p-1.5 bg-slate-900 text-white rounded-full hover:bg-slate-800 disabled:opacity-50 transition-all">
+                    {submitting ? <Loader2 size={14} className="animate-spin"/> : <ArrowUp size={14}/>}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// --- Library & QA Views (Full Implementation) ---
 
 function LibraryView() {
   const [showUpload, setShowUpload] = useState(false);
@@ -213,7 +1154,6 @@ function LibraryView() {
     init();
   }, []);
 
-  // Auto-Scroll Logic
   useEffect(() => {
     const scrollContainer = scrollRef.current;
     if (!scrollContainer) return;
@@ -406,15 +1346,13 @@ function LibraryView() {
   );
 }
 
-/* ==================== Q&A VIEW ==================== */
-
 function QAView() {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAskModal, setShowAskModal] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedQuestionId, setSelectedQuestionId] = useState(null);
-  const [viewMode, setViewMode] = useState('all'); // 'all' or 'mine'
+  const [viewMode, setViewMode] = useState('all'); 
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => { fetchQuestions(); }, []);
@@ -437,10 +1375,9 @@ function QAView() {
     return <QADetailView questionId={selectedQuestionId} onBack={() => { setSelectedQuestionId(null); fetchQuestions(); }} />;
   }
 
-  // Filter questions based on toggle
   const filteredQuestions = viewMode === 'mine' 
     ? questions.filter(q => q.user?.id === currentUser?.id)
-    : questions.filter(q => q.user?.id !== currentUser?.id); // Only show others' questions in 'all'
+    : questions; 
 
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-500">
@@ -454,15 +1391,13 @@ function QAView() {
         </button>
       </div>
 
-      {/* Toggle & Search Bar */}
       <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm mb-8 flex flex-col sm:flex-row items-center gap-2">
-        {/* Toggle */}
         <div className="flex p-1 bg-slate-100 rounded-xl shrink-0 w-full sm:w-auto">
             <button 
                 onClick={() => setViewMode('all')}
                 className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === 'all' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
             >
-                Community
+                All Questions
             </button>
             <button 
                 onClick={() => setViewMode('mine')}
@@ -472,7 +1407,6 @@ function QAView() {
             </button>
         </div>
 
-        {/* Search Input */}
         <div className="flex-1 flex items-center w-full">
             <Search size={20} className="text-slate-400 ml-3"/>
             <input 
@@ -484,7 +1418,6 @@ function QAView() {
         </div>
       </div>
 
-      {/* List */}
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="animate-spin text-violet-600 w-8 h-8"/></div>
       ) : filteredQuestions.length === 0 ? (
@@ -551,7 +1484,15 @@ function QADetailView({ questionId, onBack }) {
         body: JSON.stringify({ type, id, value })
       });
       if(res.ok) {
-          toast.success("Voted!");
+          const data = await res.json();
+          if (data.status === 'created') {
+              toast.success("Vote Added!", { icon: '👍' });
+          } else if (data.status === 'updated') {
+              toast.success("Vote Changed!", { icon: '🔄' });
+          } else if (data.status === 'removed') {
+              toast('Vote Removed.', { icon: '👋' });
+          }
+
           const r = await fetch(`/api/community/questions/${questionId}`);
           const j = await r.json();
           if (j.ok) setQuestion(j.data);
@@ -597,6 +1538,15 @@ function QADetailView({ questionId, onBack }) {
     } catch(e) {}
   };
 
+  const handleShare = () => {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+        toast.success("Link copied to clipboard!");
+    }).catch(() => {
+        toast.error("Failed to copy link");
+    });
+  };
+
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-violet-600"/></div>;
   if (!question) return <div className="text-center py-20">Question not found</div>;
 
@@ -608,148 +1558,128 @@ function QADetailView({ questionId, onBack }) {
         <X size={20}/> Back to Questions
       </button>
 
-      <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm mb-8">
-        <div className="flex gap-6">
-          <div className="flex flex-col items-center gap-2">
-            <button onClick={() => handleVote('question', question.id, 1)} className="p-2 bg-slate-100 rounded-xl hover:bg-violet-100 hover:text-violet-600 transition-colors"><ArrowUp size={24}/></button>
+      {/* --- QUESTION CARD --- */}
+      <div className="bg-gradient-to-br from-white to-violet-50/50 p-8 rounded-[2.5rem] border border-slate-200 shadow-sm mb-10 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-violet-100/30 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+        <div className="flex gap-6 relative z-10">
+          {/* Vote Button */}
+          <div className="flex flex-col items-center gap-2 pt-2">
+            <motion.button 
+                whileTap={{ scale: 1.1, rotate: 10 }}
+                onClick={() => handleVote('question', question.id, 1)} 
+                className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center hover:bg-amber-100 transition-colors shadow-lg shadow-amber-100 ring-1 ring-amber-200/50"
+            >
+                <ThumbsUp size={24} fill="currentColor" className="drop-shadow-sm"/>
+            </motion.button>
             <span className="font-black text-2xl text-slate-700">{question.score}</span>
-            <button onClick={() => handleVote('question', question.id, -1)} className="p-2 bg-slate-100 rounded-xl hover:bg-red-100 hover:text-red-600 transition-colors"><ArrowDown size={24}/></button>
           </div>
+          
+          {/* Content */}
           <div className="flex-1">
-            <h1 className="text-3xl font-black text-slate-900 mb-4 leading-tight">{question.title}</h1>
-            <p className="text-slate-600 text-lg leading-relaxed mb-6 whitespace-pre-wrap">{question.content}</p>
+            <div className="flex gap-2 mb-4 flex-wrap">
+                {question.tags.map(t => (
+                    <span key={t} className="px-3 py-1 bg-white border border-violet-100 text-violet-600 text-[10px] font-bold uppercase tracking-wider rounded-lg shadow-sm">
+                        {t}
+                    </span>
+                ))}
+            </div>
+            <h1 className="text-3xl md:text-4xl font-black text-slate-900 mb-6 leading-tight">{question.title}</h1>
+            <div className="prose prose-slate max-w-none mb-8">
+                <p className="text-slate-600 text-lg leading-relaxed whitespace-pre-wrap font-medium">{question.content}</p>
+            </div>
             
-            <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-              <div className="flex gap-2">
-                {question.tags.map(t => <span key={t} className="px-3 py-1 bg-violet-50 text-violet-700 text-xs font-bold uppercase rounded-lg">{t}</span>)}
+            <div className="flex items-center justify-between border-t border-slate-200/60 pt-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center text-sm font-bold text-slate-600 border-2 border-white shadow-sm">
+                    {question.user.name?.[0]}
+                </div>
+                <div className="leading-tight">
+                    <span className="block text-sm font-bold text-slate-800">{question.user.name}</span>
+                    <span className="block text-xs text-slate-400">Asked on {new Date(question.createdAt).toLocaleDateString()}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
-                <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-xs">{question.user.name?.[0]}</div>
-                {question.user.name}
-              </div>
+              <button onClick={handleShare} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors">
+                 <Share2 size={18}/> Share
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      <h3 className="text-xl font-bold text-slate-800 mb-6">{question.answers.length} Answers</h3>
-      <div className="space-y-6 mb-10">
+      <h3 className="text-xl font-bold text-slate-800 mb-6 px-2 flex items-center gap-2">
+        <MessageCircle className="text-violet-600" size={20}/> {question.answers.length} Answers
+      </h3>
+      
+      <div className="space-y-6 mb-12">
         {question.answers.map(ans => (
-          <div key={ans.id} className={`p-6 rounded-3xl border ${ans.isAccepted ? 'bg-green-50 border-green-200 shadow-sm' : 'bg-white border-slate-200'} flex gap-4`}>
-            <div className="flex flex-col items-center gap-1">
-              <button onClick={() => handleVote('answer', ans.id, 1)} className="p-1 hover:text-violet-600"><ArrowUp size={20}/></button>
-              <span className="font-bold text-slate-700">{ans.score}</span>
-              <button onClick={() => handleVote('answer', ans.id, -1)} className="p-1 hover:text-red-600"><ArrowDown size={20}/></button>
-              {ans.isAccepted && <CheckCircle2 className="text-green-600 mt-2" size={24}/>}
-            </div>
-            <div className="flex-1">
-              <p className="text-slate-700 leading-relaxed mb-4 whitespace-pre-wrap">{ans.content}</p>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-400">{ans.user.name} • {new Date(ans.createdAt).toLocaleDateString()}</span>
-                {isAuthor && !ans.isAccepted && (
-                  <button onClick={() => handleAccept(ans.id)} className="px-3 py-1 bg-slate-100 hover:bg-green-100 text-slate-600 hover:text-green-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1">
-                    <Check size={14}/> Accept
-                  </button>
-                )}
-              </div>
+          <div key={ans.id} className={`p-6 md:p-8 rounded-[2rem] border transition-all ${ans.isAccepted ? 'bg-green-50/50 border-green-200 shadow-sm ring-1 ring-green-100' : 'bg-white border-slate-200'}`}>
+            <div className="flex gap-5">
+                <div className="flex flex-col items-center gap-1 pt-1">
+                    <motion.button 
+                        whileTap={{ scale: 1.2, y: -2 }}
+                        onClick={() => handleVote('answer', ans.id, 1)} 
+                        className={`p-2 rounded-xl transition-colors ${ans.isAccepted ? 'text-green-700 bg-green-100' : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'}`}
+                    >
+                        <ThumbsUp size={20}/>
+                    </motion.button>
+                    <span className={`font-bold ${ans.isAccepted ? 'text-green-800' : 'text-slate-600'}`}>{ans.score}</span>
+                    {ans.isAccepted && <div className="mt-3 text-green-600 bg-green-100 p-1.5 rounded-full"><CheckCircle2 size={20}/></div>}
+                </div>
+                
+                <div className="flex-1">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center text-xs font-bold">
+                                {ans.user.name?.[0]?.toUpperCase() || 'U'}
+                            </div>
+                            <div>
+                                <span className="text-sm font-bold text-slate-800 block">{ans.user.name}</span>
+                                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Answered {new Date(ans.createdAt).toLocaleDateString()}</span>
+                            </div>
+                        </div>
+                        {isAuthor && !ans.isAccepted && (
+                            <button onClick={() => handleAccept(ans.id)} className="text-xs font-bold text-green-600 hover:bg-green-50 px-3 py-1.5 rounded-lg transition-colors border border-transparent hover:border-green-200">
+                                Accept Answer
+                            </button>
+                        )}
+                    </div>
+                    <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">{ans.content}</p>
+                </div>
             </div>
           </div>
         ))}
       </div>
 
+      {/* --- ANSWER INPUT --- */}
       {!isAuthor && (
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-lg">
-          <h3 className="font-bold text-lg mb-4">Your Answer</h3>
-          <textarea 
-            className="w-full h-32 p-4 bg-slate-50 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-violet-500 resize-none mb-4"
-            placeholder="Type your explanation here..."
-            value={newAnswer} onChange={e => setNewAnswer(e.target.value)}
-          />
-          <button 
-            onClick={handlePostAnswer} 
-            disabled={submitting}
-            className="px-8 py-3 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl shadow-lg shadow-violet-200 transition-all flex items-center gap-2 disabled:opacity-50"
-          >
-            {submitting ? <Loader2 className="animate-spin"/> : 'Post Answer'}
-          </button>
+        <div className="bg-gradient-to-b from-white to-slate-50 p-1 rounded-[2rem] border border-slate-200 shadow-sm sticky bottom-6 z-20">
+          <div className="bg-white rounded-[1.8rem] p-6 relative">
+              <h3 className="font-bold text-lg text-slate-800 mb-4 flex items-center gap-2">
+                Your Answer
+              </h3>
+              <div className="relative group">
+                <textarea 
+                    className="w-full min-h-[160px] p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:bg-white focus:border-violet-100 focus:ring-4 focus:ring-violet-500/10 outline-none transition-all resize-none text-slate-700 placeholder:text-slate-400 font-medium"
+                    placeholder="Write a helpful answer..."
+                    value={newAnswer} 
+                    onChange={e => setNewAnswer(e.target.value)}
+                />
+                <div className="absolute bottom-4 right-4">
+                    <button 
+                        onClick={handlePostAnswer} 
+                        disabled={submitting || !newAnswer.trim()}
+                        className="bg-violet-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg hover:bg-violet-700 transition-all disabled:opacity-0 disabled:scale-90 transform duration-200 flex items-center gap-2 active:scale-95"
+                    >
+                        {submitting ? <Loader2 className="animate-spin w-4 h-4"/> : <><Send size={16}/> Post Answer</>}
+                    </button>
+                </div>
+              </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
-
-function AskQuestionModal({ onClose, onRefresh }) {
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [tags, setTags] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  // 🧠 FIX: Ensure tags are processed correctly
-  const handleSubmit = async () => {
-    if (!title || !content) return toast.error("Missing fields");
-    setLoading(true);
-    try {
-      const res = await fetch('/api/community/questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          title, 
-          content, 
-          tags: tags.split(',').map(t => t.trim()).filter(t => t) // Clean tags
-        })
-      });
-      if (res.ok) {
-        toast.success("Question Posted!");
-        onRefresh();
-        onClose();
-      } else { throw new Error(); }
-    } catch(e) { toast.error("Failed to post"); }
-    finally { setLoading(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 animate-in zoom-in-95">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="font-bold text-2xl text-slate-900">Ask Question</h3>
-          <button onClick={onClose}><X size={24} className="text-slate-400 hover:text-slate-600"/></button>
-        </div>
-        
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold uppercase text-slate-500 mb-1 ml-1">Title</label>
-            <input value={title} onChange={e => setTitle(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl font-bold" placeholder="e.g. Mechanism of Action of Atropine?"/>
-          </div>
-          <div>
-            <label className="block text-xs font-bold uppercase text-slate-500 mb-1 ml-1">Details</label>
-            <textarea value={content} onChange={e => setContent(e.target.value)} className="w-full h-32 p-3 bg-slate-50 border rounded-xl resize-none" placeholder="Describe your doubt..."/>
-          </div>
-          <div>
-            <label className="block text-xs font-bold uppercase text-slate-500 mb-1 ml-1">Tags (comma separated)</label>
-            <input value={tags} onChange={e => setTags(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl" placeholder="Pharmacology, ANS, Hard"/>
-          </div>
-          <button onClick={handleSubmit} disabled={loading} className="w-full py-4 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 transition-all">
-            {loading ? <Loader2 className="animate-spin mx-auto"/> : 'Post Question'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- HELPERS & SHARED ---------------- */
-
-const getTheme = (subject) => THEMES[subject] || THEMES['Default'];
-
-const getDownloadUrl = (url) => {
-  if (!url) return '#';
-  if (url.includes('/image/upload/')) return url.replace('/image/upload/', '/image/upload/fl_attachment/');
-  if (url.includes('/raw/upload/')) return url.replace('/raw/upload/', '/raw/upload/fl_attachment/');
-  if (url.includes('/upload/') && !url.includes('fl_attachment')) {
-    return url.replace('/upload/', '/upload/fl_attachment/');
-  }
-  return url;
-};
 
 function ResourceCardSmall({ resource, onView, onDownload }) {
   const theme = getTheme(resource.subject);

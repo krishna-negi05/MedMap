@@ -41,8 +41,10 @@ model User {
   pollVotes     PollVote[]
   ownedGroups   Group[]        @relation("GroupAdmin")
   groups        GroupMember[]
-  messages      Message[]
+  // messages      Message[] // <--- REMOVED THIS: It was causing the conflict
+  senderMessages Message[]     @relation("SenderMessages") // <--- This is the correct inverse for Message.sender
   downloads     Download[]     // <--- ADDED THIS: Inverse relation for Download tracking
+  messageReactions MessageReaction[] // <--- ADDED THIS
 
   // Preferences
   mindmapDepth     Int             @default(3)
@@ -287,19 +289,6 @@ model GroupMember {
   @@unique([userId, groupId])
 }
 
-model Message {
-  id          String   @id @default(cuid())
-  content     String
-  
-  groupId     String
-  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  
-  senderId    String
-  sender      User     @relation(fields: [senderId], references: [id])
-  
-  createdAt   DateTime @default(now())
-}
-
 model Download {
   id         String   @id @default(cuid())
   
@@ -312,4 +301,32 @@ model Download {
   createdAt  DateTime @default(now())
 
   @@unique([userId, resourceId]) // <--- Ensures 1 user can't count twice for same file
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  content     String?  // Make optional for image-only messages
+  attachmentUrl String? // URL for images/docs
+  attachmentType String? // 'image', 'video', 'doc'
+  
+  groupId     String
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  
+  senderId    String
+  sender      User     @relation("SenderMessages", fields: [senderId], references: [id]) // Added relation name
+  
+  reactions   MessageReaction[]
+  
+  createdAt   DateTime @default(now())
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid())
+  emoji     String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, messageId, emoji])
 }

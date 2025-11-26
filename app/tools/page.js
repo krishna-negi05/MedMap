@@ -1,31 +1,46 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Layers, Pill, FlaskConical, Mic, Image as ImageIcon, 
   RefreshCw, X, ChevronRight, RotateCcw, Sparkles, 
   Lightbulb, AlertTriangle, CheckCircle2, Volume2, ArrowRight, 
-  Save, Clock, Trash2, FolderOpen, Loader2 
+  Save, Clock, Trash2, FolderOpen, Loader2, Thermometer, Home,
+  Activity, Stethoscope, ScanLine, Eye, Upload, Info
 } from 'lucide-react';
+import { Toaster, toast } from 'react-hot-toast'; // IMPORTED TOAST
 import { callGemini } from '../../lib/gemini';
-// 👇 Import your centralized model configuration
 import { FEATURE_MODELS } from '../../lib/ai-config';
 
-// --- Schemas ---
+// --- UTILITIES ---
+
+// 1. Markdown Renderer for Reports
+const renderMarkdown = (text) => {
+    if (!text) return null;
+    return text.split('\n').map((line, index) => {
+        // Headers
+        if (line.trim().startsWith('###')) {
+            return <h3 key={index} className="text-lg font-black text-slate-800 mt-4 mb-2 uppercase tracking-wide flex items-center gap-2"><span className="w-1 h-5 bg-teal-500 rounded-full"></span>{line.replace(/#/g, '')}</h3>;
+        }
+        // Bold text handling
+        if (line.includes('**')) {
+            const parts = line.split(/(\*\*.*?\*\*)/g);
+            return <p key={index} className="mb-2 text-slate-600 leading-relaxed">{parts.map((part, i) => part.startsWith('**') ? <span key={i} className="font-bold text-slate-900">{part.replace(/\*\*/g, '')}</span> : part)}</p>;
+        }
+        // Diagram Placeholder handling
+        if (line.includes('[Image of')) {
+            return <div key={index} className="my-4 p-3 bg-slate-100 rounded-lg text-xs font-mono text-slate-500 flex items-center gap-2"><ImageIcon size={14}/> Diagram Placeholder: {line}</div>;
+        }
+        // Standard paragraph
+        return <p key={index} className="mb-2 text-slate-600 leading-relaxed">{line}</p>;
+    });
+};
+
+// --- SCHEMAS ---
 const FLASHCARD_SCHEMA = { 
   type: "OBJECT", 
   properties: { 
     deckTitle: { type: "STRING" }, 
-    cards: { 
-      type: "ARRAY", 
-      items: { 
-        type: "OBJECT", 
-        properties: { 
-          front: { type: "STRING" }, 
-          back: { type: "STRING" }, 
-          difficulty: { type: "STRING" } 
-        } 
-      } 
-    } 
+    cards: { type: "ARRAY", items: { type: "OBJECT", properties: { front: { type: "STRING" }, back: { type: "STRING" }, difficulty: { type: "STRING" } } } } 
   } 
 };
 
@@ -59,6 +74,18 @@ const VIVA_EVALUATION_SCHEMA = {
   } 
 };
 
+const SYMPTOM_CHECKER_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    primaryDiagnosis: { type: "STRING" },
+    cautionFlag: { type: "STRING", description: "Immediate danger signs" },
+    modernMedication: { type: "STRING", description: "Primary recommended OTC medicine or class" },
+    homeRemedy: { type: "STRING", description: "Ayurvedic/Desi/Simple home remedy advice" },
+    whenToSeeDoctor: { type: "STRING" }
+  }
+};
+
+
 // --- 1. FLASHCARDS ---
 const FlashcardView = () => {
   const [topic, setTopic] = useState('');
@@ -80,27 +107,48 @@ const FlashcardView = () => {
   };
 
   const generateDeck = async () => {
-    if (!topic) return;
+    if (!topic) {
+        toast.error("Please enter a topic first!");
+        return;
+    }
     setLoading(true);
-    try {
+    
+    const promise = async () => {
       const prompt = `Create 8 high-yield medical flashcards for: "${topic}". JSON Output.`;
-      // Use Qwen (Structural Model)
       const res = await callGemini(prompt, FLASHCARD_SCHEMA, FEATURE_MODELS.flashcards);
-      setDeck(res); setCurrentIndex(0); setFlipped(false);
-    } catch (e) { alert("Error generating cards."); }
+      setDeck(res); 
+      setCurrentIndex(0); 
+      setFlipped(false);
+      return res;
+    };
+
+    toast.promise(promise(), {
+        loading: 'Generating study deck...',
+        success: 'Deck ready!',
+        error: 'Failed to create cards.'
+    });
+
+    try { await promise(); } catch(e) {}
     setLoading(false);
   };
 
   const saveDeck = async () => {
     if(!deck) return;
-    try {
-        await fetch('/api/tools/flashcards', {
-            method: 'POST',
-            body: JSON.stringify({ topic: deck.deckTitle || topic, cards: deck })
-        });
-        alert('Deck saved!');
-        fetchDecks();
-    } catch(e) { alert('Save failed'); }
+    
+    const promise = fetch('/api/tools/flashcards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: deck.deckTitle || topic, cards: deck })
+    }).then(async res => {
+        if(!res.ok) throw new Error();
+        await fetchDecks();
+    });
+
+    toast.promise(promise, {
+        loading: 'Saving to library...',
+        success: 'Deck saved successfully!',
+        error: 'Could not save deck.'
+    });
   };
 
   const loadDeck = (saved) => {
@@ -109,22 +157,45 @@ const FlashcardView = () => {
       setCurrentIndex(0);
       setFlipped(false);
       setShowHistory(false);
+      toast.success(`Loaded "${saved.topic}"`);
   };
 
-  const deleteDeck = async (id, e) => {
+  // Custom Toast for Delete Confirmation
+  const confirmDelete = (id, e) => {
       e.stopPropagation();
-      if(!confirm('Delete deck?')) return;
-      await fetch(`/api/tools/flashcards?id=${id}`, { method: 'DELETE' });
-      fetchDecks();
+      toast((t) => (
+        <div className="flex flex-col gap-2">
+            <span className="font-bold text-slate-800">Delete this deck?</span>
+            <div className="flex gap-2">
+                <button 
+                    onClick={async () => {
+                        toast.dismiss(t.id);
+                        await fetch(`/api/tools/flashcards?id=${id}`, { method: 'DELETE' });
+                        fetchDecks();
+                        toast.success("Deck deleted");
+                    }} 
+                    className="bg-red-500 text-white px-3 py-1 rounded-md text-sm font-bold"
+                >
+                    Yes, Delete
+                </button>
+                <button 
+                    onClick={() => toast.dismiss(t.id)} 
+                    className="bg-slate-100 text-slate-600 px-3 py-1 rounded-md text-sm font-bold"
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
+      ), { duration: 4000, icon: <AlertTriangle className="text-red-500" /> });
   };
 
   return (
     <div className="h-full flex flex-col relative">
       <div className="flex justify-between items-center mb-4">
-         <h3 className="text-xl font-bold text-slate-800">Smart Flashcards</h3>
-         <button onClick={() => setShowHistory(!showHistory)} className="text-slate-500 hover:text-teal-600 flex items-center gap-1 text-xs font-bold bg-slate-100 px-3 py-2 rounded-lg">
+          <h3 className="text-xl font-bold text-slate-800">Smart Flashcards</h3>
+          <button onClick={() => setShowHistory(!showHistory)} className="text-slate-500 hover:text-teal-600 flex items-center gap-1 text-xs font-bold bg-slate-100 px-3 py-2 rounded-lg">
             <FolderOpen size={14}/> {showHistory ? 'Close Library' : 'My Decks'}
-         </button>
+          </button>
       </div>
 
       {showHistory ? (
@@ -136,7 +207,7 @@ const FlashcardView = () => {
                           <div className="font-bold text-slate-800">{d.topic}</div>
                           <div className="text-[10px] text-slate-400">{new Date(d.createdAt).toLocaleDateString()}</div>
                       </div>
-                      <button onClick={(e) => deleteDeck(d.id, e)} className="p-2 hover:bg-red-50 text-slate-300 hover:text-red-500 rounded-full"><Trash2 size={16}/></button>
+                      <button onClick={(e) => confirmDelete(d.id, e)} className="p-2 hover:bg-red-50 text-slate-300 hover:text-red-500 rounded-full"><Trash2 size={16}/></button>
                   </div>
               ))}
           </div>
@@ -164,7 +235,7 @@ const FlashcardView = () => {
                         <div onClick={() => setFlipped(!flipped)} className={`w-full max-w-lg aspect-[3/2] relative transition-transform duration-700 transform-style-3d cursor-pointer group ${flipped ? 'rotate-y-180' : ''}`}>
                             <div className={`absolute inset-0 bg-white border-2 border-slate-100 shadow-lg rounded-3xl p-8 flex flex-col items-center justify-center text-center backface-hidden ${flipped ? 'opacity-0' : 'opacity-100'}`}>
                             <span className="px-3 py-1 bg-teal-50 text-teal-700 rounded-full text-[10px] font-bold uppercase tracking-widest mb-6">Question</span>
-                            <p className="text-2xl font-bold text-slate-800">{deck.cards[currentIndex].front}</p>
+                            <p className="2xl font-bold text-slate-800">{deck.cards[currentIndex].front}</p>
                             <span className="absolute bottom-6 text-xs text-slate-400 font-medium flex items-center gap-1"><RotateCcw size={10}/> Tap to flip</span>
                             </div>
                             <div className={`absolute inset-0 bg-slate-900 text-white shadow-2xl rounded-3xl p-8 flex flex-col items-center justify-center text-center backface-hidden rotate-y-180 ${flipped ? 'opacity-100' : 'opacity-0'}`}>
@@ -204,26 +275,43 @@ const PharmaView = () => {
   };
 
   const checkInteraction = async () => {
-    if (!drugA || !drugB) return;
+    if (!drugA || !drugB) {
+        toast.error("Enter two drugs to check.");
+        return;
+    }
     setLoading(true);
-    try {
-      const prompt = `Analyze interaction between ${drugA} and ${drugB}. JSON { severity, mechanism, recommendation, summary }`;
-      // Use Qwen (Structural)
-      const res = await callGemini(prompt, PHARMA_INTERACTION_SCHEMA, FEATURE_MODELS.pharma);
-      setResult(res);
-      setViewHistory(false);
-    } catch(e) { alert("Analysis failed"); }
+    
+    const promise = async () => {
+        const prompt = `Analyze interaction between ${drugA} and ${drugB}. JSON { severity, mechanism, recommendation, summary }`;
+        const res = await callGemini(prompt, PHARMA_INTERACTION_SCHEMA, FEATURE_MODELS.pharma);
+        setResult(res);
+        setViewHistory(false);
+        return res;
+    };
+
+    toast.promise(promise(), {
+        loading: 'Checking safety database...',
+        success: 'Analysis complete',
+        error: 'Analysis failed'
+    });
+
+    try { await promise(); } catch(e) {}
     setLoading(false);
   };
 
   const saveResult = async () => {
       if(!result) return;
-      await fetch('/api/tools/history', {
+      const promise = fetch('/api/tools/history', {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ toolType: 'pharma', title: `${drugA} + ${drugB}`, data: result })
+      }).then(() => fetchHistory());
+
+      toast.promise(promise, {
+          loading: 'Saving...',
+          success: 'Saved to history',
+          error: 'Save failed'
       });
-      alert('Saved to history');
-      fetchHistory();
   };
 
   return (
@@ -284,26 +372,43 @@ const LabView = () => {
   };
 
   const analyzeLabs = async () => {
-    if (!values) return;
+    if (!values) {
+        toast.error("Please enter lab values.");
+        return;
+    }
     setLoading(true);
-    try {
-      const prompt = `Interpret these lab values: "${values}". JSON { interpretation, differentials:[], nextSteps:[], severity }`;
-      // Use Qwen (Structural)
-      const res = await callGemini(prompt, LAB_REPORT_SCHEMA, FEATURE_MODELS.labs);
-      setResult(res);
-      setViewHistory(false);
-    } catch (e) { alert("Error analyzing labs"); }
+    
+    const promise = async () => {
+        const prompt = `Interpret these lab values: "${values}". JSON { interpretation, differentials:[], nextSteps:[], severity }`;
+        const res = await callGemini(prompt, LAB_REPORT_SCHEMA, FEATURE_MODELS.labs);
+        setResult(res);
+        setViewHistory(false);
+        return res;
+    };
+
+    toast.promise(promise(), {
+        loading: 'Interpreting data...',
+        success: 'Report generated',
+        error: 'Interpretation failed'
+    });
+
+    try { await promise(); } catch (e) {}
     setLoading(false);
   };
 
   const saveResult = async () => {
       if(!result) return;
-      await fetch('/api/tools/history', {
+      const promise = fetch('/api/tools/history', {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ toolType: 'labs', title: values.substring(0, 20) + '...', data: result })
+      }).then(() => fetchHistory());
+
+      toast.promise(promise, {
+          loading: 'Saving report...',
+          success: 'Report saved',
+          error: 'Save failed'
       });
-      alert('Report saved');
-      fetchHistory();
   };
 
   return (
@@ -351,17 +456,114 @@ const VivaView = () => {
   const [evaluation, setEvaluation] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  // --- TTS Function (Using Gemini TTS API) ---
+  const speakQuestion = async (text) => {
+    if (!text || loading) return;
+    
+    // Using Aoede voice (calm female voice)
+    const voiceName = "Aoede"; 
+    
+    const payload = {
+        contents: [{ parts: [{ text }] }],
+        generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+                voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName }
+                }
+            }
+        },
+        model: "gemini-2.5-flash-preview-tts"
+    };
+
+    try {
+        const apiKey = ""; 
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+        
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) throw new Error("TTS API failed");
+
+        const result = await response.json();
+        const part = result?.candidates?.[0]?.content?.parts?.[0];
+        const audioData = part?.inlineData?.data;
+        const mimeType = part?.inlineData?.mimeType;
+
+        if (audioData && mimeType && mimeType.startsWith("audio/")) {
+            // Helper to convert PCM to WAV (necessary for raw audio)
+            const base64ToArrayBuffer = (base64) => {
+                const binaryString = atob(base64);
+                const len = binaryString.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                return bytes.buffer;
+            };
+
+            const pcmToWav = (pcm16, sampleRate = 24000) => {
+                const buffer = new ArrayBuffer(44 + pcm16.length * 2);
+                const view = new DataView(buffer);
+                
+                // WAV header
+                const writeString = (v, offset) => { for (let i = 0; i < v.length; i++) view.setUint8(offset + i, v.charCodeAt(i)); };
+                writeString('RIFF', 0);
+                view.setUint32(4, 36 + pcm16.length * 2, true);
+                writeString('WAVE', 8);
+                view.setUint32(16, 16, true);
+                view.setUint16(20, 1, true); // PCM format
+                view.setUint16(22, 1, true); // Mono
+                view.setUint32(24, sampleRate, true);
+                view.setUint32(28, sampleRate * 2, true);
+                view.setUint16(32, 2, true);
+                view.setUint16(34, 16, true);
+                writeString('data', 36);
+                view.setUint32(40, pcm16.length * 2, true);
+
+                // Write PCM data
+                let offset = 44;
+                for (let i = 0; i < pcm16.length; i++, offset += 2) {
+                    view.setInt16(offset, pcm16[i], true);
+                }
+                
+                return new Blob([view], { type: 'audio/wav' });
+            };
+            
+            const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+            const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
+            const pcmData = base64ToArrayBuffer(audioData);
+            const pcm16 = new Int16Array(pcmData);
+            const wavBlob = pcmToWav(pcm16, sampleRate);
+            
+            const audioUrl = URL.createObjectURL(wavBlob);
+            const audio = new Audio(audioUrl);
+            audio.play();
+        } else {
+             console.error("TTS output format error:", mimeType);
+        }
+    } catch(error) {
+        console.error("TTS playback error:", error);
+        toast.error("TTS Audio failed to play");
+    }
+  };
+  
   const startViva = async () => {
     setActive(true);
     setLoading(true);
-    const prompt = `Act as a strict medical professor. Ask a viva question about ${topic}. Short question.`;
-    // Use DeepSeek (Reasoning) to act as a strict professor
-    const text = await callGemini(prompt, null, FEATURE_MODELS.osce);
-    setCurrentQ(text);
-    setLoading(false);
-    if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        window.speechSynthesis.speak(utterance);
+    const prompt = `Act as a strict medical professor. Ask a viva question about ${topic}. The tone should be formal and demanding. Short question.`;
+    
+    try {
+        const text = await callGemini(prompt, null, FEATURE_MODELS.osce);
+        setCurrentQ(text);
+        setLoading(false);
+        speakQuestion(text);
+    } catch(e) {
+        toast.error("Could not start exam.");
+        setLoading(false);
     }
   };
 
@@ -369,15 +571,20 @@ const VivaView = () => {
     if (!userAns) return;
     setLoading(true);
     const prompt = `Professor asked: "${currentQ}". Student answered: "${userAns}". Grade it (0-10), give feedback, better answer, and next question. JSON.`;
-    // Use DeepSeek (Reasoning) to evaluate logic
-    const res = await callGemini(prompt, VIVA_EVALUATION_SCHEMA, FEATURE_MODELS.osce);
-    setEvaluation(res);
-    setCurrentQ(res.nextQuestion);
-    setLoading(false);
-    setUserAns('');
-    if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(res.feedback + " Next question. " + res.nextQuestion);
-        window.speechSynthesis.speak(utterance);
+    
+    try {
+        const res = await callGemini(prompt, VIVA_EVALUATION_SCHEMA, FEATURE_MODELS.osce);
+        setEvaluation(res);
+        setCurrentQ(res.nextQuestion);
+        setLoading(false);
+        setUserAns('');
+        
+        // Play audio response
+        const audioText = `Your score is ${res.score} out of 10. ${res.feedback} The next question is: ${res.nextQuestion}`;
+        speakQuestion(audioText);
+    } catch(e) {
+        toast.error("Error evaluating answer.");
+        setLoading(false);
     }
   };
 
@@ -394,25 +601,25 @@ const VivaView = () => {
       ) : (
         <div className="w-full h-full flex flex-col pt-4">
            <div className="flex-1 flex flex-col justify-center items-center">
-              <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-3xl border border-slate-700 mb-8 relative text-white shadow-2xl w-full">
-                 <div className="absolute -top-3 -left-3 bg-teal-500 p-2 rounded-full border-4 border-white"><Volume2 size={20} className="text-white"/></div>
+             <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-3xl border border-slate-700 mb-8 relative text-white shadow-2xl w-full">
+                 <button onClick={() => speakQuestion(currentQ)} className="absolute -top-3 -left-3 bg-teal-500 p-2 rounded-full border-4 border-white hover:scale-110 transition-transform"><Volume2 size={20} className="text-white"/></button>
                  <p className="text-xl font-medium leading-relaxed">"{currentQ}"</p>
                  {loading && <div className="mt-4 flex justify-center gap-1"><div className="w-2 h-2 bg-white/50 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-white/50 rounded-full animate-bounce delay-75"></div><div className="w-2 h-2 bg-white/50 rounded-full animate-bounce delay-150"></div></div>}
+             </div>
+             
+             {evaluation && (
+               <div className="w-full mb-6 text-left bg-white border border-slate-200 p-6 rounded-2xl shadow-lg animate-in fade-in slide-in-from-bottom-2">
+                  <div className="flex justify-between mb-2 items-center"><span className="font-bold text-slate-700 text-sm uppercase tracking-wide">Professor's Feedback</span><span className={`font-black text-lg ${evaluation.score >= 7 ? 'text-green-600' : 'text-amber-600'}`}>{evaluation.score}/10</span></div>
+                  <p className="text-slate-700 mb-4 leading-relaxed">{evaluation.feedback}</p>
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-100"><span className="text-xs font-bold text-slate-400 uppercase block mb-1">Better Answer</span><p className="text-sm text-slate-600 italic">{evaluation.betterAnswer}</p></div>
               </div>
-              
-              {evaluation && (
-                <div className="w-full mb-6 text-left bg-white border border-slate-200 p-6 rounded-2xl shadow-lg animate-in fade-in slide-in-from-bottom-2">
-                   <div className="flex justify-between mb-2 items-center"><span className="font-bold text-slate-700 text-sm uppercase tracking-wide">Professor's Feedback</span><span className={`font-black text-lg ${evaluation.score >= 7 ? 'text-green-600' : 'text-amber-600'}`}>{evaluation.score}/10</span></div>
-                   <p className="text-slate-700 mb-4 leading-relaxed">{evaluation.feedback}</p>
-                   <div className="bg-slate-50 p-3 rounded-lg border border-slate-100"><span className="text-xs font-bold text-slate-400 uppercase block mb-1">Better Answer</span><p className="text-sm text-slate-600 italic">{evaluation.betterAnswer}</p></div>
-                </div>
-              )}
-           </div>
+             )}
+            </div>
            <div className="w-full mt-auto pb-4">
-              <div className="relative">
-                 <input className="w-full bg-slate-50 border border-slate-200 rounded-full pl-6 pr-14 py-4 outline-none focus:ring-2 focus:ring-teal-500 shadow-sm" placeholder="Type your answer..." value={userAns} onChange={(e) => setUserAns(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitAnswer()}/>
-                 <button onClick={submitAnswer} disabled={loading} className="absolute right-2 top-2 bottom-2 bg-teal-600 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-teal-700 disabled:bg-slate-300 transition-colors shadow-md"><ArrowRight size={20}/></button>
-              </div>
+             <div className="relative">
+                <input className="w-full bg-slate-50 border border-slate-200 rounded-full pl-6 pr-14 py-4 outline-none focus:ring-2 focus:ring-teal-500 shadow-sm" placeholder="Type your answer..." value={userAns} onChange={(e) => setUserAns(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitAnswer()}/>
+                <button onClick={submitAnswer} disabled={loading} className="absolute right-2 top-2 bottom-2 bg-teal-600 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-teal-700 disabled:bg-slate-300 transition-colors shadow-md"><ArrowRight size={20}/></button>
+             </div>
            </div>
         </div>
       )}
@@ -420,47 +627,348 @@ const VivaView = () => {
   );
 };
 
-// --- 5. RADIOLOGY (Placeholder for now) ---
-const RadiologyView = () => {
-  const [mode, setMode] = useState('cxr'); 
-  const [showLabels, setShowLabels] = useState(false);
+// --- 5. SYMPTOM CHECKER ---
+const SymptomCheckerView = () => {
+    const [symptoms, setSymptoms] = useState('');
+    const [result, setResult] = useState(null);
+    const [loading, setLoading] = useState(false);
+    
+    const analyzeSymptoms = async () => {
+        if (!symptoms) return;
+        setLoading(true);
+        setResult(null);
 
-  return (
-    <div className="h-full flex flex-col items-center justify-center">
-       <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-xl">
-          <button onClick={()=>setMode('cxr')} className={`px-6 py-2 rounded-lg font-bold transition-all ${mode==='cxr'?'bg-white text-slate-900 shadow-sm':'text-slate-500 hover:text-slate-700'}`}>Chest X-Ray</button>
-          <button onClick={()=>setMode('ecg')} className={`px-6 py-2 rounded-lg font-bold transition-all ${mode==='ecg'?'bg-white text-slate-900 shadow-sm':'text-slate-500 hover:text-slate-700'}`}>ECG Strip</button>
-       </div>
-       <div className="relative bg-black rounded-2xl overflow-hidden shadow-2xl w-full max-w-md aspect-[4/5] md:aspect-square flex items-center justify-center border-4 border-slate-800">
-          {mode === 'cxr' ? (
-            <svg viewBox="0 0 400 500" className="w-full h-full opacity-90">
-               <path d="M 200,50 L 200,450" stroke="#333" strokeWidth="10"/>
-               <path d="M 50,100 Q 200,150 350,100" stroke="#444" strokeWidth="5" fill="none"/>
-               <path d="M 40,150 Q 200,200 360,150" stroke="#444" strokeWidth="5" fill="none"/>
-               <path d="M 30,200 Q 200,250 370,200" stroke="#444" strokeWidth="5" fill="none"/>
-               <path d="M 60,80 Q 10,200 60,400 Q 120,400 180,350 Q 150,150 60,80" fill="#111" stroke="#555"/>
-               <path d="M 340,80 Q 390,200 340,400 Q 280,400 220,350 Q 250,150 340,80" fill="#111" stroke="#555"/>
-               <path d="M 180,200 Q 250,220 260,350 Q 200,420 150,350 Q 160,250 180,200" fill="#ddd" opacity="0.3"/>
-               <path d="M 340,80 Q 360,150 330,200 L 340,80" fill="#000" stroke="none" className={showLabels ? "stroke-red-500 stroke-2" : ""}/>
-               {showLabels && (<><text x="100" y="200" fill="white" fontSize="12">Right Lung</text><text x="280" y="200" fill="white" fontSize="12">Left Lung</text><text x="200" y="300" fill="white" fontSize="12" textAnchor="middle">Heart Shadow</text><rect x="320" y="80" width="40" height="100" fill="none" stroke="red" strokeDasharray="4"/><text x="320" y="70" fill="red" fontSize="12">Pneumothorax?</text></>)}
-            </svg>
-          ) : (
-            <svg viewBox="0 0 400 200" className="w-full h-full bg-white">
-               <defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="red" strokeWidth="0.5" opacity="0.2"/></pattern></defs>
-               <rect width="100%" height="100%" fill="url(#grid)" />
-               <polyline points="0,100 20,100 30,90 40,110 50,100 60,100 65,80 70,140 75,60 80,100 100,100 110,90 120,100 150,100 170,100 180,90 190,110 200,100 210,100 215,80 220,140 225,60 230,100 250,100" fill="none" stroke="black" strokeWidth="2"/>
-               {showLabels && (<g><text x="70" y="50" fill="red" fontSize="10">QRS</text><text x="30" y="80" fill="red" fontSize="10">P</text><text x="110" y="80" fill="red" fontSize="10">T</text></g>)}
-            </svg>
-          )}
-       </div>
-       <div className="mt-6">
-          <button onClick={()=>setShowLabels(!showLabels)} className="bg-teal-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-teal-700 flex items-center gap-2 shadow-lg shadow-teal-200 transition-all active:scale-95">
-            {showLabels ? 'Hide Analysis' : 'AI Analyze'} {showLabels ? <X size={16}/> : <Sparkles size={16}/>}
-          </button>
-       </div>
-    </div>
-  );
+        const promise = async () => {
+            const prompt = `Analyze the following patient symptoms from an Indian perspective: "${symptoms}". Act as a primary care doctor. Provide a primary likely diagnosis, immediate caution flags, an appropriate modern OTC medication or class (e.g., Paracetamol), specific home remedies (Ayurvedic/Desi tips like tulsi tea, hot compresses, etc.), and clear advice on when to see a doctor. JSON output.`;
+            return await callGemini(prompt, SYMPTOM_CHECKER_SCHEMA, FEATURE_MODELS.symptom_checker);
+        };
+
+        toast.promise(promise(), {
+            loading: 'Consulting AI Doctor...',
+            success: (res) => {
+                setResult(res);
+                return 'Analysis Complete';
+            },
+            error: 'Analysis failed'
+        });
+
+        try { await promise(); } catch (e) {}
+        setLoading(false);
+    };
+
+    return (
+        <div className="h-full flex flex-col max-w-2xl mx-auto w-full">
+            <div className="flex justify-between items-center mb-6">
+                <div><h3 className="text-xl font-bold mb-1 text-slate-900">Home Symptom Analyzer</h3><p className="text-slate-500 text-sm">Get quick advice for common ailments.</p></div>
+            </div>
+
+            <textarea 
+                className="w-full h-32 border border-slate-200 rounded-2xl p-4 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-red-500 outline-none resize-none mb-4 text-sm" 
+                placeholder="Describe your symptoms (e.g., 'I have a headache, feeling dizzy, and mild fever for 2 days')" 
+                value={symptoms} 
+                onChange={(e) => setSymptoms(e.target.value)}
+            />
+            <button onClick={analyzeSymptoms} disabled={loading} className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 disabled:opacity-50 shadow-md flex items-center justify-center gap-2">
+                {loading ? 'Consulting AI...' : 'Get Advice'} <Home size={18}/>
+            </button>
+
+            {result && (
+                <div className="mt-6 space-y-4 animate-in slide-in-from-bottom-4 relative w-full">
+                    <div className="p-5 bg-white rounded-2xl border border-red-100 shadow-md">
+                        <div className="flex justify-between items-start mb-2">
+                            <span className="text-xs font-bold text-slate-400 uppercase">Primary Assessment</span>
+                        </div>
+                        <h4 className="font-black text-2xl text-slate-900 mb-4">{result.primaryDiagnosis}</h4>
+                        
+                        {/* Caution Flag */}
+                        {result.cautionFlag && (
+                             <div className="p-3 bg-red-50 border-l-4 border-red-500 rounded-lg mb-4 text-sm text-red-800 flex items-center gap-2 font-medium">
+                                <AlertTriangle size={16}/> {result.cautionFlag}
+                             </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Modern Medicine */}
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                <span className="text-xs font-bold text-blue-600 uppercase tracking-wide flex items-center gap-1"><Pill size={12}/> Modern OTC Advice</span>
+                                <p className="text-sm text-slate-800 mt-1 font-medium">{result.modernMedication}</p>
+                            </div>
+
+                            {/* Home Remedy */}
+                            <div className="p-3 bg-green-50 rounded-xl border border-green-100">
+                                <span className="text-xs font-bold text-green-700 uppercase tracking-wide flex items-center gap-1"><Home size={12}/> Desi/Home Remedy</span>
+                                <p className="text-sm text-green-900 mt-1 font-medium">{result.homeRemedy}</p>
+                            </div>
+                        </div>
+                        
+                        <div className="mt-4 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                            <span className="text-xs font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1"><Thermometer size={12}/> When to See a Doctor</span>
+                            <p className="text-sm text-amber-900 mt-1 font-medium">{result.whenToSeeDoctor}</p>
+                        </div>
+
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 };
+
+
+// --- 6. RADIOLOGY SPOTTER (Advanced Implementation) ---
+const RadiologyView = () => {
+    const [file, setFile] = useState(null);
+    const [preview, setPreview] = useState(null);
+    const [stats, setStats] = useState(null);
+    const [analyzing, setAnalyzing] = useState(false);
+    const [aiReport, setAiReport] = useState(null);
+    const [viewMode, setViewMode] = useState('original'); // 'original' | 'edge'
+
+    // Refs for Computer Vision
+    const canvasRef = useRef(null);
+    const edgeCanvasRef = useRef(null);
+
+    useEffect(() => {
+        if (!file) {
+            setPreview(null);
+            setStats(null);
+            setAiReport(null);
+            return;
+        }
+        const objectUrl = URL.createObjectURL(file);
+        setPreview(objectUrl);
+        return () => URL.revokeObjectURL(objectUrl);
+    }, [file]);
+
+    const handleFile = (f) => {
+        if (f) {
+            setFile(f);
+            setAiReport(null);
+            setStats(null);
+            setViewMode('original');
+            toast.success("Image uploaded");
+        }
+    }
+
+    // 1. CLIENT-SIDE COMPUTER VISION (Tech Scan)
+    const runTechScan = async () => {
+        if (!preview) {
+            toast.error("Upload an image first.");
+            return;
+        }
+        setAnalyzing(true);
+        
+        try {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = preview;
+            await new Promise(r => img.onload = r);
+
+            const cw = Math.min(800, img.width);
+            const ch = Math.round(img.height * (cw / img.width));
+
+            // Draw Original
+            const canvas = canvasRef.current;
+            canvas.width = cw;
+            canvas.height = ch;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, cw, ch);
+
+            // Processing (Grayscale + Sobel Edge)
+            const id = ctx.getImageData(0, 0, cw, ch);
+            const data = id.data;
+            const gray = new Uint8ClampedArray(cw * ch);
+            let sum = 0;
+
+            for (let i = 0; i < data.length; i += 4) {
+                const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                gray[i / 4] = lum;
+                sum += lum;
+            }
+            const mean = Math.round(sum / (cw * ch));
+
+            // Draw Edge View
+            const edgeCanvas = edgeCanvasRef.current;
+            edgeCanvas.width = cw;
+            edgeCanvas.height = ch;
+            const ectx = edgeCanvas.getContext('2d');
+            const edgeImg = ectx.createImageData(cw, ch);
+            
+            // Simple Edge Detection Loop
+            for (let y = 1; y < ch - 1; y++) {
+               for (let x = 1; x < cw - 1; x++) {
+                   const i = y * cw + x;
+                   // Horizontal gradient (simplified)
+                   const gx = -gray[i-1] + gray[i+1];
+                   const gy = -gray[i-cw] + gray[i+cw];
+                   const val = Math.sqrt(gx*gx + gy*gy) * 4; // Boost contrast
+                   const clamp = Math.min(255, val);
+                   edgeImg.data[i*4] = clamp; 
+                   edgeImg.data[i*4+1] = clamp; 
+                   edgeImg.data[i*4+2] = clamp; 
+                   edgeImg.data[i*4+3] = 255;
+               }
+            }
+            ectx.putImageData(edgeImg, 0, 0);
+
+            // Save Stats
+            setStats({
+                meanIntensity: mean,
+                dimensions: `${cw}x${ch}`,
+                contrast: mean > 128 ? 'High Key' : 'Low Key'
+            });
+            setViewMode('edge'); // Switch view to show the result
+            
+            // Replaced Alert with Toast
+            toast.success('Tech Scan Complete!', {
+                icon: '🔍',
+                style: {
+                    borderRadius: '10px',
+                    background: '#333',
+                    color: '#fff',
+                },
+                description: 'Now click "Get Diagnosis"'
+            });
+
+        } catch (e) {
+            console.error(e);
+            toast.error("Scan failed.");
+        }
+        setAnalyzing(false);
+    };
+
+    // 2. SERVER-SIDE AI (Clinical Diagnosis)
+    const generateClinicalReport = async () => {
+        if (!stats) {
+            toast.error('Run Tech Scan first.');
+            return;
+        }
+        setAiReport(null);
+        setAnalyzing(true);
+        
+        const promise = async () => {
+            const prompt = `Act as a Senior Radiologist. Analyze X-ray with stats: ${JSON.stringify(stats)}.
+            Output Markdown formatted report:
+            ### 1. Introduction
+            Modality, Region, View.
+            ### 2. Observations
+            Systematic ABCDE approach.
+            ### 3. Diagnosis
+            Most likely diagnosis + 2 differentials.
+            ### 4. Viva Corner
+            3 short high-yield exam questions.
+            
+            **Important:** If a specific pathology is diagnosed (e.g., Pneumothorax, Pneumonia, Fracture), insert a relevant diagram tag on its own line like 
+            
+            
+            or 
+            
+            
+            .`;
+    
+            const res = await callGemini(prompt, null, FEATURE_MODELS.radiology || FEATURE_MODELS.default);
+            setAiReport(typeof res === 'string' ? res : JSON.stringify(res));
+            return res;
+        };
+
+        toast.promise(promise(), {
+            loading: 'Radiologist analyzing image...',
+            success: 'Diagnosis Report Ready',
+            error: 'Report generation failed'
+        });
+
+        try { await promise(); } catch(e) {}
+        setAnalyzing(false);
+    };
+
+    return (
+        <div className="h-full w-full max-w-5xl mx-auto flex flex-col gap-6">
+            <div className="flex justify-between items-end border-b border-slate-200 pb-4">
+                <div>
+                    <h3 className="font-black text-2xl text-slate-900">Radiology Spotter</h3>
+                    <p className="text-sm text-slate-500 font-medium">Digital Scan & AI Diagnosis.</p>
+                </div>
+                <div className="flex gap-2">
+                   <input type="file" id="rad-upload" accept="image/*" onChange={(e)=>handleFile(e.target.files?.[0])} className="hidden"/>
+                   <label htmlFor="rad-upload" className="cursor-pointer bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-800 transition-colors">
+                       <Upload size={16}/> Upload Scan
+                   </label>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-[500px]">
+                {/* LEFT: Image Viewer */}
+                <div className="lg:col-span-2 bg-black rounded-3xl overflow-hidden relative shadow-2xl flex flex-col">
+                    {/* Toolbar */}
+                    <div className="bg-slate-900/80 backdrop-blur-md p-3 flex justify-between items-center absolute top-0 w-full z-20 border-b border-white/10">
+                        <div className="flex gap-1 bg-slate-800 p-1 rounded-lg">
+                            <button onClick={() => setViewMode('original')} disabled={!preview} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'original' ? 'bg-white text-black' : 'text-slate-400'}`}>
+                                <Eye size={14} className="inline mr-1"/> Original
+                            </button>
+                            <button onClick={() => setViewMode('edge')} disabled={!stats} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'edge' ? 'bg-teal-500 text-white' : 'text-slate-400'}`}>
+                                <ScanLine size={14} className="inline mr-1"/> Edge View
+                            </button>
+                        </div>
+                        <div className="flex gap-2">
+                             <button onClick={runTechScan} disabled={!preview || analyzing} className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold disabled:opacity-50 flex items-center gap-2 transition-colors">
+                                 {analyzing && !stats ? <Loader2 className="animate-spin" size={14}/> : <Activity size={14}/>} 1. Run Tech Scan
+                             </button>
+                             <button onClick={generateClinicalReport} disabled={!stats || analyzing} className="px-3 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-xs font-bold disabled:opacity-50 flex items-center gap-2 transition-colors">
+                                 {analyzing && stats ? <Loader2 className="animate-spin" size={14}/> : <Sparkles size={14}/>} 2. Get Diagnosis
+                             </button>
+                        </div>
+                    </div>
+
+                    {/* Canvas Layers */}
+                    <div className="flex-1 flex items-center justify-center relative bg-gray-900 min-h-[400px]">
+                        {!preview && <div className="text-slate-500 text-sm font-medium flex flex-col items-center gap-2"><ImageIcon size={48} className="opacity-20"/>Upload an X-Ray to begin</div>}
+                        
+                        {/* Original Image Layer */}
+                        {preview && (
+                            <img src={preview} alt="Original" className={`max-h-[65vh] object-contain transition-opacity duration-500 absolute ${viewMode === 'original' ? 'opacity-100 z-10' : 'opacity-0 z-0'}`} />
+                        )}
+                        
+                        {/* Edge Detection Layer (Canvas) */}
+                        <canvas ref={edgeCanvasRef} className={`max-h-[65vh] object-contain transition-opacity duration-500 absolute ${viewMode === 'edge' ? 'opacity-100 z-10' : 'opacity-0 z-0'}`} />
+                        
+                        {/* Hidden Canvas for Processing */}
+                        <canvas ref={canvasRef} className="hidden" />
+                    </div>
+                </div>
+
+                {/* RIGHT: Report */}
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-full max-h-[80vh]">
+                    <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                        <Stethoscope size={18} className="text-teal-600"/>
+                        <h4 className="font-black text-slate-800 text-sm uppercase tracking-wide">Clinical Report</h4>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-200">
+                        {!aiReport ? (
+                            <div className="text-center py-12 text-slate-400">
+                                {stats ? (
+                                    <div className="space-y-2 animate-in fade-in">
+                                        <CheckCircle2 size={40} className="mx-auto text-teal-500 mb-2"/>
+                                        <p className="font-bold text-slate-700">Tech Scan Complete</p>
+                                        <div className="text-xs bg-slate-50 p-3 rounded-xl inline-block text-left space-y-1 border border-slate-100">
+                                          <div>DIM: <span className="font-mono text-slate-900">{stats.dimensions}</span></div>
+                                          <div>INT: <span className="font-mono text-slate-900">{stats.meanIntensity}</span></div>
+                                          <div>CON: <span className="font-mono text-slate-900">{stats.contrast}</span></div>
+                                        </div>
+                                        <p className="text-xs text-slate-400 mt-4">Click "Get Diagnosis" for AI report.</p>
+                                    </div>
+                                ) : <p className="text-sm">No data generated yet.</p>}
+                            </div>
+                        ) : (
+                            <div className="animate-in slide-in-from-bottom-4">
+                                {renderMarkdown(aiReport)}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 // --- Main Tools Page ---
 export default function ToolsPage() {
@@ -470,12 +978,32 @@ export default function ToolsPage() {
     { id: 'flashcards', icon: Layers, label: 'Flashcards', desc: 'AI Decks' },
     { id: 'pharma', icon: Pill, label: 'Pharma', desc: 'Interactions' },
     { id: 'labs', icon: FlaskConical, label: 'Lab AI', desc: 'Interpreter' },
+    { id: 'symptom_checker', icon: Home, label: 'Home Check', desc: 'Desi Remedies' },
     { id: 'viva', icon: Mic, label: 'Viva Voice', desc: 'Oral Exam' },
     { id: 'radiology', icon: ImageIcon, label: 'Radiology', desc: 'X-Ray Sim' }
   ];
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-8 pb-24">
+    <div className="max-w-7xl mx-auto p-4 md:p-8 pb-24">
+      {/* Toast Container */}
+      <Toaster 
+        position="bottom-right" 
+        toastOptions={{
+            style: {
+                background: '#334155',
+                color: '#fff',
+                borderRadius: '12px',
+                fontSize: '14px',
+            },
+            success: {
+                iconTheme: {
+                    primary: '#2dd4bf',
+                    secondary: '#fff',
+                },
+            },
+        }}
+      />
+      
       <div className="mb-8 text-center md:text-left">
         <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Medical Toolkit</h2>
         <p className="text-slate-500">Specialized AI tools for clinical practice and exam prep.</p>
@@ -500,6 +1028,7 @@ export default function ToolsPage() {
             {activeTool === 'labs' && <LabView />}
             {activeTool === 'viva' && <VivaView />}
             {activeTool === 'radiology' && <RadiologyView />}
+            {activeTool === 'symptom_checker' && <SymptomCheckerView />}
         </div>
       </div>
     </div>

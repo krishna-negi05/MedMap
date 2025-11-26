@@ -1,10 +1,19 @@
+// app/api/community/questions/[id]/route.js
+
 import { NextResponse } from 'next/server';
 import prisma from '../../../../../lib/prisma';
 
 // GET: Fetch single question details
 export async function GET(req, { params }) {
   try {
-    const { id } = params;
+    // 💡 FINAL FIX: Use Promise.resolve() and await to forcefully unwrap 
+    // the dynamic parameter object, which directly addresses the runtime error.
+    const resolvedParams = await Promise.resolve(params);
+    const id = resolvedParams.id;
+    
+    if (!id) {
+        return NextResponse.json({ error: 'Question ID missing from URL' }, { status: 400 });
+    }
     
     const question = await prisma.question.findUnique({
       where: { id },
