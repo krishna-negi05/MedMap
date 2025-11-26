@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { RefreshCw, Sparkles, Activity, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft, Save, FolderOpen, Clock, Trash2, X, Loader2, FileText, HeartPulse, Wind, Droplets } from 'lucide-react';
+import { RefreshCw, Sparkles, Activity, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft, Save, FolderOpen, Clock, Trash2, X, Loader2, FileText, HeartPulse, Wind, Droplets, Thermometer } from 'lucide-react';
 import { callGemini } from '../../lib/gemini';
 import { FEATURE_MODELS } from '../../lib/ai-config'; 
 
@@ -13,7 +13,8 @@ const VIGNETTE_SCHEMA = {
     vignette: {
       type: "OBJECT",
       properties: {
-        intro: { type: "STRING" },
+        // The full question stem (History + Vitals + Labs all in one text block)
+        fullDescription: { type: "STRING" }, 
         vitals: {
           type: "OBJECT",
           properties: {
@@ -23,8 +24,7 @@ const VIGNETTE_SCHEMA = {
             SpO2: { type: "STRING" },
             Temp: { type: "STRING" }
           }
-        },
-        history: { type: "STRING" }
+        }
       }
     }
   }
@@ -59,13 +59,33 @@ const STEPS_SCHEMA = {
   }
 };
 
+// --- HIGH YIELD TOPICS (NEET PG) ---
+const HIGH_YIELD_TOPICS = [
+  "General Medicine: Congestive Heart Failure (Nocturnal cough)",
+  "General Medicine: Hyperthyroidism (Weight loss, tremors)",
+  "General Medicine: Bronchial Asthma (Breathlessness, wheezing)",
+  "Neurology: Myasthenia Gravis (Diplopia, fatigable weakness)",
+  "Surgery: Tension Pneumothorax (Absent breath sounds)",
+  "Surgery: Perforation Peritonitis (Guarding, rigidity)",
+  "Surgery: Inguinal Hernia (Groin swelling)",
+  "Pediatrics: Croup (Barking cough, stridor)",
+  "Pediatrics: Hirschsprung’s Disease (Delayed meconium)",
+  "Microbiology: Anthrax (Ulcer with black eschar)",
+  "Pharmacology: Anticholinergic Toxicity (Dry mouth, blurred vision)",
+  "Pathology: Multiple Myeloma (Lytic bone lesions)",
+  "OBGYN: Placenta Previa (Painless vaginal bleeding)",
+  "Ophthalmology: Central Retinal Artery Occlusion (Cherry red spot)",
+  "Orthopedics: Perthes Disease (Hip pain, limited abduction)",
+  "Biochemistry: Urea Cycle Disorder (High ammonia in neonate)",
+  "Physiology: Diabetes Insipidus (Polyuria, dilute urine)"
+];
+
 const MOCK_CASE = { 
-  title: "Acute Chest Pain (Sample)", 
+  title: "ABG Analysis: Metabolic Acidosis", 
   difficulty: "Intermediate", 
   vignette: { 
-    intro: "A 55-year-old male presents with crushing chest pain radiating to the left arm and jaw.", 
-    vitals: { BP: "150/90", HR: "110", RR: "22", SpO2: "94%", Temp: "37.2°C" }, 
-    history: "HTN, Smoker (20 pack-years), Hyperlipidemia." 
+    fullDescription: "A patient's Arterial Blood Gas (ABG) report shows: pH: 7.22, pCO2: 38 mmHg, HCO3: 16 mEq/L, Na+: 130 mEq/L, Cl-: 84 mEq/L. The patient appears clinically dehydrated with deep, rapid breathing.", 
+    vitals: { BP: "100/60", HR: "110", RR: "28", SpO2: "98%", Temp: "37.0°C" }
   }, 
   steps: [] 
 };
@@ -96,13 +116,11 @@ export default function CasesPage() {
     } catch(e) { console.error(e); }
   };
   
-  // 🧠 FIX: Added 'no-store' to ensure we get the latest difficulty setting
   const fetchUserSettings = async () => {
     try {
         const res = await fetch('/api/auth/session', { cache: 'no-store' });
         const json = await res.json();
         if(json.ok && json.user?.defaultDifficulty) {
-            console.log("Setting Difficulty to:", json.user.defaultDifficulty); // Debug
             setDefaultDiff(json.user.defaultDifficulty);
         }
     } catch(e) { console.error("Failed to fetch settings", e); }
@@ -112,29 +130,31 @@ export default function CasesPage() {
     setLoading(true);
     setFeedback(null);
     try { 
-        // 1. Generate Patient
-        setLoadingStep('Generating Patient Profile...');
+        // Pick a random high-yield topic
+        const randomTopic = HIGH_YIELD_TOPICS[Math.floor(Math.random() * HIGH_YIELD_TOPICS.length)];
+
+        // 1. Generate NEET PG Style Vignette
+        setLoadingStep(`Drafting Case: ${randomTopic.split(':')[0]}...`);
         
         const vignettePrompt = `
-          Generate a realistic clinical clinical case scenario for an Indian Medical Student (MBBS level).
+          Act as a NEET PG / INI-CET Exam Setter.
+          Generate a High-Yield Clinical Vignette based on: "${randomTopic}".
           Difficulty: ${defaultDiff}.
           
-          CONTEXT:
-          - Focus on conditions common in India (e.g., Tuberculosis, Malaria, Dengue, Enteric Fever, OP Poisoning, Snake Bite, RHD, COPD).
-          - Can also include standard emergencies (MI, Stroke, DKA, Trauma).
-          - Vitals should be realistic.
-          - DO NOT always generate "Acute Chest Pain". Pick a random system.
+          **FORMAT INSTRUCTIONS:**
+          - Provide the **FULL QUESTION STEM** in 'fullDescription'. This must include the entire clinical picture (History, Examination, Investigations) just like a real exam question.
+          - Do NOT split information.
+          - Include Vitals if relevant (BP, HR, etc).
 
-          IMPORTANT: Output purely Valid JSON matching this exact structure:
+          Output purely Valid JSON matching this structure:
           {
-            "title": "Clinical Case Title",
+            "title": "Short Title (e.g. 45M with Hemoptysis)",
             "difficulty": "${defaultDiff}",
             "vignette": {
-              "intro": "A [age]-year-old [gender] presents with...",
+              "fullDescription": "The complete clinical scenario text...",
               "vitals": { 
                 "BP": "120/80", "HR": "80", "RR": "18", "SpO2": "98%", "Temp": "37.2C" 
-              },
-              "history": "Relevant past history..."
+              }
             }
           }
         `;
@@ -145,44 +165,34 @@ export default function CasesPage() {
             FEATURE_MODELS.caseVignette 
         );
 
-        // Fallback for flat structure
-        if (!vignetteData.vignette && vignetteData.intro) {
+        if (!vignetteData.vignette && vignetteData.fullDescription) {
             vignetteData.vignette = {
-                intro: vignetteData.intro,
-                vitals: vignetteData.vitals || {},
-                history: vignetteData.history || ''
+                fullDescription: vignetteData.fullDescription,
+                vitals: vignetteData.vitals || {}
             };
         }
 
-        if (!vignetteData?.vignette?.intro) throw new Error("Failed to generate vignette structure.");
+        if (!vignetteData?.vignette?.fullDescription) throw new Error("Failed to generate vignette structure.");
 
         // 2. Generate Questions
-        setLoadingStep('Developing Clinical Logic...');
+        setLoadingStep('Formulating MCQs...');
         
         const questionsPrompt = `
-          Patient Case: "${vignetteData.vignette.intro}"
-          History: "${vignetteData.vignette.history}"
+          **Clinical Stem:** "${vignetteData.vignette.fullDescription}"
           
-          Generate 12 high-yield clinical questions for an MBBS student based on this case.
-          - Questions should progress: History taking -> Investigations -> Diagnosis -> Management -> Complications.
-          - **IMPORTANT: Provide 4 to 5 options for every question.**
-          - Include tricky distractors relevant to the Indian context.
+          Generate 5 sequential NEET PG style MCQs based on this stem.
           
-          Output purely Valid JSON with this exact structure:
-          {
-            "steps": [
-              {
-                "id": 1,
-                "question": "Question text?",
-                "options": [
-                  { "id": "a", "text": "Option A", "feedback": "...", "correct": false },
-                  { "id": "b", "text": "Option B", "feedback": "...", "correct": false },
-                  { "id": "c", "text": "Option C", "feedback": "...", "correct": true },
-                  { "id": "d", "text": "Option D", "feedback": "...", "correct": false }
-                ]
-              }
-            ]
-          }
+          **Question Types:**
+          1. Diagnosis (Most likely diagnosis?)
+          2. Management (Next best step? / Drug of choice?)
+          3. Investigation (Gold standard? / Initial test?)
+          4. Pathophysiology (Mechanism of action? / Underlying defect?)
+          
+          **Style:**
+          - 4 Options per question.
+          - Explanations must be detailed rule-outs (e.g. "Why Option A is wrong").
+          
+          Output purely Valid JSON matching the schema.
         `;
 
         const stepsData = await callGemini(questionsPrompt, STEPS_SCHEMA, FEATURE_MODELS.caseQuestions);
@@ -241,23 +251,29 @@ export default function CasesPage() {
   };
 
   // --- Components for UI ---
-  const VitalsDisplay = ({ vitals }) => (
-    <div className="bg-slate-900 rounded-xl p-4 text-teal-400 font-mono text-sm grid grid-cols-2 gap-4 shadow-inner border border-slate-700 relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-teal-500/5 to-transparent opacity-20 pointer-events-none animate-[scan_2s_linear_infinite]"></div>
-      <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-wider">Heart Rate</span><div className="flex items-center gap-2"><HeartPulse size={16} className="animate-pulse text-red-500"/> <span className="text-xl">{vitals.HR || '--'}</span> <span className="text-xs">bpm</span></div></div>
-      <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-wider">BP</span><div className="flex items-center gap-2"><Activity size={16}/> <span className="text-xl">{vitals.BP || '--'}</span> <span className="text-xs">mmHg</span></div></div>
-      <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-wider">SpO2</span><div className="flex items-center gap-2"><Droplets size={16} className="text-blue-400"/> <span className="text-xl">{vitals.SpO2 || '--'}</span></div></div>
-      <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-wider">Resp. Rate</span><div className="flex items-center gap-2"><Wind size={16}/> <span className="text-xl">{vitals.RR || '--'}</span> <span className="text-xs">/min</span></div></div>
-    </div>
-  );
+  const VitalsDisplay = ({ vitals }) => {
+    const hasVitals = vitals && Object.values(vitals).some(v => v && v !== 'N/A' && v !== '--');
+    if(!hasVitals) return null;
+
+    return (
+      <div className="bg-slate-900 rounded-xl p-4 text-teal-400 font-mono text-sm grid grid-cols-2 gap-4 shadow-inner border border-slate-700 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-teal-500/5 to-transparent opacity-20 pointer-events-none animate-[scan_2s_linear_infinite]"></div>
+        {vitals.HR && <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-wider">Heart Rate</span><div className="flex items-center gap-2"><HeartPulse size={16} className="animate-pulse text-red-500"/> <span className="text-xl">{vitals.HR}</span></div></div>}
+        {vitals.BP && <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-wider">BP</span><div className="flex items-center gap-2"><Activity size={16}/> <span className="text-xl">{vitals.BP}</span></div></div>}
+        {vitals.SpO2 && <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-wider">SpO2</span><div className="flex items-center gap-2"><Droplets size={16} className="text-blue-400"/> <span className="text-xl">{vitals.SpO2}</span></div></div>}
+        {vitals.RR && <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-wider">Resp. Rate</span><div className="flex items-center gap-2"><Wind size={16}/> <span className="text-xl">{vitals.RR}</span></div></div>}
+        {vitals.Temp && <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-wider">Temp</span><div className="flex items-center gap-2"><Thermometer size={16} className="text-amber-500"/> <span className="text-xl">{vitals.Temp}</span></div></div>}
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 pb-24 relative">
        {/* Header */}
        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
          <div>
-            <h2 className="text-3xl font-bold text-slate-900">Clinical Cases</h2>
-            <p className="text-slate-500">Interactive patient scenarios generated by AI.</p>
+            <h2 className="text-3xl font-bold text-slate-900">Medical Vignettes</h2>
+            <p className="text-slate-500">To change the difficulty level , go to ⚙️Preferences</p>
          </div>
          <div className="flex gap-2 w-full md:w-auto">
             <button onClick={() => setShowHistory(!showHistory)} className="flex-1 md:flex-none bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-50 flex items-center justify-center gap-2 transition-all shadow-sm">
@@ -316,7 +332,15 @@ export default function CasesPage() {
             <div className="p-8 md:p-12 flex flex-col justify-center bg-slate-50 relative">
                <div className="inline-flex items-center gap-2 px-3 py-1 bg-teal-100 text-teal-700 rounded-full text-xs font-extrabold uppercase tracking-wider w-fit mb-4 border border-teal-200">{caseData.difficulty} Case</div>
                <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 mb-6 leading-tight">{caseData.title}</h2>
-               <p className="text-slate-600 text-lg mb-10 leading-relaxed">{caseData.vignette.intro}</p>
+               
+               {/* RESTORED UI: Full Description Block */}
+               <div className="mb-8">
+                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block flex items-center gap-2"><FileText size={14}/> Case Description</span>
+                   <p className="text-slate-600 text-lg leading-relaxed font-serif border-l-4 border-teal-500 pl-4">
+                       {caseData.vignette.fullDescription}
+                   </p>
+               </div>
+
                <button onClick={()=>setStarted(true)} className="w-fit bg-slate-900 hover:bg-slate-800 text-white text-lg font-bold px-8 py-4 rounded-2xl transition-all shadow-xl shadow-slate-900/20 flex items-center gap-3 hover:gap-4">Start Rounds <ArrowRight/></button>
             </div>
             <div className="bg-slate-900 p-12 text-slate-300 flex flex-col justify-center relative overflow-hidden">
@@ -349,7 +373,7 @@ export default function CasesPage() {
                     <div className="mt-6 p-5 bg-[#fdfbf7] rounded-xl border border-[#e6e2d8] shadow-sm relative">
                         <div className="absolute top-0 left-0 w-full h-1 bg-amber-200/50"></div>
                         <span className="text-[10px] font-bold text-amber-800/60 uppercase tracking-wider flex items-center gap-2 mb-2"><FileText size={12}/> Patient History</span>
-                        <p className="text-sm text-slate-700 font-serif leading-relaxed">{caseData.vignette.history}</p>
+                        <p className="text-sm text-slate-700 font-serif leading-relaxed">{caseData.vignette.fullDescription}</p>
                     </div>
                 </div>
             </div>

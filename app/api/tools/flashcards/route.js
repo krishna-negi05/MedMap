@@ -34,6 +34,24 @@ export async function POST(req) {
   }
 }
 
+// 👇 NEW: Update deck progress (SRS)
+export async function PUT(req) {
+  const token = req.cookies.get('app_session')?.value;
+  const user = token ? verifyJWT(token) : null;
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  try {
+    const { id, cards } = await req.json();
+    const updated = await prisma.flashcardDeck.update({
+      where: { id, userId: user.sub },
+      data: { cards } 
+    });
+    return NextResponse.json({ ok: true, data: updated });
+  } catch (error) {
+    return NextResponse.json({ error: 'Update failed' }, { status: 500 });
+  }
+}
+
 export async function DELETE(req) {
   const token = req.cookies.get('app_session')?.value;
   const user = token ? verifyJWT(token) : null;

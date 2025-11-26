@@ -5,32 +5,27 @@ import {
   RefreshCw, X, ChevronRight, RotateCcw, Sparkles, 
   Lightbulb, AlertTriangle, CheckCircle2, Volume2, ArrowRight, 
   Save, Clock, Trash2, FolderOpen, Loader2, Thermometer, Home,
-  Activity, Stethoscope, ScanLine, Eye, Upload, Info
+  Activity, Stethoscope, ScanLine, Eye, Upload
 } from 'lucide-react';
-import { Toaster, toast } from 'react-hot-toast'; // IMPORTED TOAST
+import { Toaster, toast } from 'react-hot-toast';
 import { callGemini } from '../../lib/gemini';
 import { FEATURE_MODELS } from '../../lib/ai-config';
 
 // --- UTILITIES ---
 
-// 1. Markdown Renderer for Reports
 const renderMarkdown = (text) => {
     if (!text) return null;
     return text.split('\n').map((line, index) => {
-        // Headers
         if (line.trim().startsWith('###')) {
             return <h3 key={index} className="text-lg font-black text-slate-800 mt-4 mb-2 uppercase tracking-wide flex items-center gap-2"><span className="w-1 h-5 bg-teal-500 rounded-full"></span>{line.replace(/#/g, '')}</h3>;
         }
-        // Bold text handling
         if (line.includes('**')) {
             const parts = line.split(/(\*\*.*?\*\*)/g);
             return <p key={index} className="mb-2 text-slate-600 leading-relaxed">{parts.map((part, i) => part.startsWith('**') ? <span key={i} className="font-bold text-slate-900">{part.replace(/\*\*/g, '')}</span> : part)}</p>;
         }
-        // Diagram Placeholder handling
         if (line.includes('[Image of')) {
             return <div key={index} className="my-4 p-3 bg-slate-100 rounded-lg text-xs font-mono text-slate-500 flex items-center gap-2"><ImageIcon size={14}/> Diagram Placeholder: {line}</div>;
         }
-        // Standard paragraph
         return <p key={index} className="mb-2 text-slate-600 leading-relaxed">{line}</p>;
     });
 };
@@ -75,7 +70,7 @@ const VIVA_EVALUATION_SCHEMA = {
 };
 
 const SYMPTOM_CHECKER_SCHEMA = {
-  type: "OBJECT",
+  type: "OBJECT", 
   properties: {
     primaryDiagnosis: { type: "STRING" },
     cautionFlag: { type: "STRING", description: "Immediate danger signs" },
@@ -86,10 +81,11 @@ const SYMPTOM_CHECKER_SCHEMA = {
 };
 
 
-// --- 1. FLASHCARDS ---
+// --- 1. FLASHCARDS (FIXED: Data Structure Issue) ---
 const FlashcardView = () => {
   const [topic, setTopic] = useState('');
   const [deck, setDeck] = useState(null);
+  const [deckId, setDeckId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -106,53 +102,104 @@ const FlashcardView = () => {
     } catch(e) {}
   };
 
-  const generateDeck = async () => {
-    if (!topic) {
-        toast.error("Please enter a topic first!");
-        return;
+  // --- SRS ALGORITHM ---
+  const calculateNextReview = (card, rating) => {
+    let { interval = 0, repetition = 0, efactor = 2.5 } = card.srs || {};
+    if (rating >= 3) {
+        if (repetition === 0) interval = 1;
+        else if (repetition === 1) interval = 6;
+        else interval = Math.round(interval * efactor);
+        repetition += 1;
+        efactor = efactor + (0.1 - (5 - rating) * (0.08 + (5 - rating) * 0.02));
+        if (efactor < 1.3) efactor = 1.3;
+    } else {
+        repetition = 0;
+        interval = 1;
     }
-    setLoading(true);
-    
-    const promise = async () => {
-      const prompt = `Create 8 high-yield medical flashcards for: "${topic}". JSON Output.`;
-      const res = await callGemini(prompt, FLASHCARD_SCHEMA, FEATURE_MODELS.flashcards);
-      setDeck(res); 
-      setCurrentIndex(0); 
+    const nextReviewDate = new Date();
+    nextReviewDate.setDate(nextReviewDate.getDate() + interval);
+    return { interval, repetition, efactor, dueDate: nextReviewDate.toISOString() };
+  };
+
+  const handleReview = async (rating) => {
+      if (!deck || !deck[currentIndex]) return;
+      const updatedCard = { ...deck[currentIndex], srs: calculateNextReview(deck[currentIndex], rating) };
+      const newDeck = [...deck];
+      newDeck[currentIndex] = updatedCard;
+      setDeck(newDeck);
       setFlipped(false);
+      if (currentIndex < deck.length - 1) setCurrentIndex(currentIndex + 1);
+      else { toast.success("Session Complete!"); setCurrentIndex(0); }
+      
+      if (deckId) {
+          try {
+              await fetch('/api/tools/flashcards', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: deckId, cards: newDeck })
+              });
+          } catch(e) { console.error("Failed to save progress"); }
+      }
+  };
+
+  const generateDeck = async () => {
+    if (!topic) { toast.error("Please enter a topic first!"); return; }
+    setLoading(true);
+    const loadingToast = toast.loading('Generating study deck...');
+    
+    const apiCall = (async () => {
+      const prompt = `Create 8 high-yield medical flashcards for: "${topic}". Context: Indian MBBS. JSON Output.`;
+      const res = await callGemini(prompt, FLASHCARD_SCHEMA, FEATURE_MODELS.flashcards);
       return res;
-    };
+    })();
 
-    toast.promise(promise(), {
-        loading: 'Generating study deck...',
-        success: 'Deck ready!',
-        error: 'Failed to create cards.'
-    });
+    try { 
+        const res = await apiCall;
+        
+        // 🧠 FIX: Ensure we extract the array correctly. 
+        // If the AI returns { cards: [...] }, use res.cards.
+        // If it returns just [...], use res.
+        const cardsArray = res.cards || (Array.isArray(res) ? res : []);
+        
+        if (cardsArray.length === 0) throw new Error("No cards generated");
 
-    try { await promise(); } catch(e) {}
-    setLoading(false);
+        const initializedCards = cardsArray.map(c => ({ ...c, srs: { interval: 0, repetition: 0, efactor: 2.5, dueDate: null } }));
+        setDeck(initializedCards); 
+        setDeckId(null);
+        setCurrentIndex(0); 
+        setFlipped(false);
+        toast.success('Deck ready!', { id: loadingToast });
+    } catch (e) {
+        console.error(e);
+        toast.error('Failed to create cards. Try again.', { id: loadingToast });
+    } finally {
+        setLoading(false);
+    }
   };
 
   const saveDeck = async () => {
     if(!deck) return;
-    
-    const promise = fetch('/api/tools/flashcards', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: deck.deckTitle || topic, cards: deck })
-    }).then(async res => {
+    const loadingToast = toast.loading('Saving to library...');
+    try {
+        const res = await fetch('/api/tools/flashcards', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            // Use deck[0]?.deckTitle if available, or the search topic
+            body: JSON.stringify({ topic: topic || "Untitled Deck", cards: deck })
+        });
         if(!res.ok) throw new Error();
+        const json = await res.json();
+        setDeckId(json.deck.id);
         await fetchDecks();
-    });
-
-    toast.promise(promise, {
-        loading: 'Saving to library...',
-        success: 'Deck saved successfully!',
-        error: 'Could not save deck.'
-    });
+        toast.success('Deck saved successfully!', { id: loadingToast });
+    } catch (e) {
+        toast.error('Could not save deck.', { id: loadingToast });
+    }
   };
 
   const loadDeck = (saved) => {
       setDeck(saved.cards);
+      setDeckId(saved.id);
       setTopic(saved.topic);
       setCurrentIndex(0);
       setFlipped(false);
@@ -160,30 +207,14 @@ const FlashcardView = () => {
       toast.success(`Loaded "${saved.topic}"`);
   };
 
-  // Custom Toast for Delete Confirmation
   const confirmDelete = (id, e) => {
       e.stopPropagation();
       toast((t) => (
         <div className="flex flex-col gap-2">
             <span className="font-bold text-slate-800">Delete this deck?</span>
             <div className="flex gap-2">
-                <button 
-                    onClick={async () => {
-                        toast.dismiss(t.id);
-                        await fetch(`/api/tools/flashcards?id=${id}`, { method: 'DELETE' });
-                        fetchDecks();
-                        toast.success("Deck deleted");
-                    }} 
-                    className="bg-red-500 text-white px-3 py-1 rounded-md text-sm font-bold"
-                >
-                    Yes, Delete
-                </button>
-                <button 
-                    onClick={() => toast.dismiss(t.id)} 
-                    className="bg-slate-100 text-slate-600 px-3 py-1 rounded-md text-sm font-bold"
-                >
-                    Cancel
-                </button>
+                <button onClick={async () => { toast.dismiss(t.id); await fetch(`/api/tools/flashcards?id=${id}`, { method: 'DELETE' }); fetchDecks(); toast.success("Deck deleted"); }} className="bg-red-500 text-white px-3 py-1 rounded-md text-sm font-bold">Yes, Delete</button>
+                <button onClick={() => toast.dismiss(t.id)} className="bg-slate-100 text-slate-600 px-3 py-1 rounded-md text-sm font-bold">Cancel</button>
             </div>
         </div>
       ), { duration: 4000, icon: <AlertTriangle className="text-red-500" /> });
@@ -225,29 +256,38 @@ const FlashcardView = () => {
             ) : (
                 <div className="flex flex-col h-full">
                     <div className="flex justify-between items-center mb-6 bg-slate-50 p-3 rounded-xl">
-                        <div><h3 className="font-bold text-slate-900">{deck.deckTitle}</h3><span className="text-teal-600 text-xs font-bold uppercase">Card {currentIndex+1} / {deck.cards.length}</span></div>
+                        <div><h3 className="font-bold text-slate-900">{deck[0]?.deckTitle || topic}</h3><span className="text-teal-600 text-xs font-bold uppercase">Card {currentIndex+1} / {deck.length}</span></div>
                         <div className="flex gap-2">
-                            <button onClick={saveDeck} className="p-2 bg-white border rounded-lg hover:text-teal-600" title="Save Deck"><Save size={18}/></button>
+                            {!deckId && <button onClick={saveDeck} className="p-2 bg-white border rounded-lg hover:text-teal-600" title="Save Deck"><Save size={18}/></button>}
                             <button onClick={() => setDeck(null)} className="p-2 bg-white border rounded-lg hover:text-red-500"><X size={18}/></button>
                         </div>
                     </div>
                     <div className="flex-1 flex items-center justify-center perspective-1000 py-4">
                         <div onClick={() => setFlipped(!flipped)} className={`w-full max-w-lg aspect-[3/2] relative transition-transform duration-700 transform-style-3d cursor-pointer group ${flipped ? 'rotate-y-180' : ''}`}>
                             <div className={`absolute inset-0 bg-white border-2 border-slate-100 shadow-lg rounded-3xl p-8 flex flex-col items-center justify-center text-center backface-hidden ${flipped ? 'opacity-0' : 'opacity-100'}`}>
-                            <span className="px-3 py-1 bg-teal-50 text-teal-700 rounded-full text-[10px] font-bold uppercase tracking-widest mb-6">Question</span>
-                            <p className="2xl font-bold text-slate-800">{deck.cards[currentIndex].front}</p>
-                            <span className="absolute bottom-6 text-xs text-slate-400 font-medium flex items-center gap-1"><RotateCcw size={10}/> Tap to flip</span>
+                                <span className="px-3 py-1 bg-teal-50 text-teal-700 rounded-full text-[10px] font-bold uppercase tracking-widest mb-6">Question</span>
+                                <p className="text-xl md:text-2xl font-bold text-slate-800">{deck[currentIndex].front}</p>
+                                <span className="absolute bottom-6 text-xs text-slate-400 font-medium flex items-center gap-1"><RotateCcw size={10}/> Tap to flip</span>
                             </div>
                             <div className={`absolute inset-0 bg-slate-900 text-white shadow-2xl rounded-3xl p-8 flex flex-col items-center justify-center text-center backface-hidden rotate-y-180 ${flipped ? 'opacity-100' : 'opacity-0'}`}>
-                            <span className="px-3 py-1 bg-white/10 text-teal-300 rounded-full text-[10px] font-bold uppercase tracking-widest mb-6">Answer</span>
-                            <p className="text-xl font-medium">{deck.cards[currentIndex].back}</p>
+                                <span className="px-3 py-1 bg-white/10 text-teal-300 rounded-full text-[10px] font-bold uppercase tracking-widest mb-6">Answer</span>
+                                <p className="text-lg md:text-xl font-medium">{deck[currentIndex].back}</p>
                             </div>
                         </div>
                     </div>
-                    <div className="flex justify-center gap-4 mt-4">
-                        <button onClick={() => {setFlipped(false); setCurrentIndex(Math.max(0, currentIndex-1))}} disabled={currentIndex===0} className="p-4 rounded-full bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50"><ChevronRight size={24} className="rotate-180 text-slate-600"/></button>
-                        <button onClick={() => {setFlipped(false); setCurrentIndex(Math.min(deck.cards.length-1, currentIndex+1))}} disabled={currentIndex===deck.cards.length-1} className="p-4 rounded-full bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"><ChevronRight size={24}/></button>
-                    </div>
+                    
+                    {flipped ? (
+                        <div className="grid grid-cols-4 gap-2 mt-4 animate-in slide-in-from-bottom-2">
+                            <button onClick={() => handleReview(0)} className="p-3 rounded-xl bg-red-100 text-red-700 font-bold text-xs hover:bg-red-200">Again<br/><span className="text-[9px] opacity-70">&lt; 1m</span></button>
+                            <button onClick={() => handleReview(3)} className="p-3 rounded-xl bg-orange-100 text-orange-700 font-bold text-xs hover:bg-orange-200">Hard<br/><span className="text-[9px] opacity-70">2d</span></button>
+                            <button onClick={() => handleReview(4)} className="p-3 rounded-xl bg-blue-100 text-blue-700 font-bold text-xs hover:bg-blue-200">Good<br/><span className="text-[9px] opacity-70">4d</span></button>
+                            <button onClick={() => handleReview(5)} className="p-3 rounded-xl bg-green-100 text-green-700 font-bold text-xs hover:bg-green-200">Easy<br/><span className="text-[9px] opacity-70">7d</span></button>
+                        </div>
+                    ) : (
+                        <div className="flex justify-center gap-4 mt-4">
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Tap card to see answer</p>
+                        </div>
+                    )}
                 </div>
             )}
         </>
@@ -280,38 +320,45 @@ const PharmaView = () => {
         return;
     }
     setLoading(true);
-    
-    const promise = async () => {
+    const loadingToast = toast.loading("Checking safety database...");
+
+    const apiCall = (async () => {
         const prompt = `Analyze interaction between ${drugA} and ${drugB}. JSON { severity, mechanism, recommendation, summary }`;
         const res = await callGemini(prompt, PHARMA_INTERACTION_SCHEMA, FEATURE_MODELS.pharma);
-        setResult(res);
-        setViewHistory(false);
         return res;
-    };
+    })();
 
-    toast.promise(promise(), {
-        loading: 'Checking safety database...',
-        success: 'Analysis complete',
-        error: 'Analysis failed'
-    });
-
-    try { await promise(); } catch(e) {}
-    setLoading(false);
+    try { 
+        const res = await apiCall;
+        if (res) {
+            setResult(res);
+            setViewHistory(false);
+            toast.success("Analysis complete", { id: loadingToast });
+        } else {
+            throw new Error("No data returned");
+        }
+    } catch (e) {
+        console.error(e);
+        toast.error("Analysis failed", { id: loadingToast });
+    } finally {
+        setLoading(false);
+    }
   };
 
   const saveResult = async () => {
       if(!result) return;
-      const promise = fetch('/api/tools/history', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ toolType: 'pharma', title: `${drugA} + ${drugB}`, data: result })
-      }).then(() => fetchHistory());
-
-      toast.promise(promise, {
-          loading: 'Saving...',
-          success: 'Saved to history',
-          error: 'Save failed'
-      });
+      const loadingToast = toast.loading('Saving...');
+      try {
+          await fetch('/api/tools/history', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ toolType: 'pharma', title: `${drugA} + ${drugB}`, data: result })
+          });
+          await fetchHistory();
+          toast.success('Saved to history', { id: loadingToast });
+      } catch(e) {
+          toast.error('Save failed', { id: loadingToast });
+      }
   };
 
   return (
@@ -377,38 +424,40 @@ const LabView = () => {
         return;
     }
     setLoading(true);
+    const loadingToast = toast.loading('Interpreting data...');
     
-    const promise = async () => {
+    const apiCall = (async () => {
         const prompt = `Interpret these lab values: "${values}". JSON { interpretation, differentials:[], nextSteps:[], severity }`;
         const res = await callGemini(prompt, LAB_REPORT_SCHEMA, FEATURE_MODELS.labs);
+        return res;
+    })();
+
+    try { 
+        const res = await apiCall;
         setResult(res);
         setViewHistory(false);
-        return res;
-    };
-
-    toast.promise(promise(), {
-        loading: 'Interpreting data...',
-        success: 'Report generated',
-        error: 'Interpretation failed'
-    });
-
-    try { await promise(); } catch (e) {}
-    setLoading(false);
+        toast.success('Report generated', { id: loadingToast });
+    } catch (e) {
+        toast.error('Interpretation failed', { id: loadingToast });
+    } finally {
+        setLoading(false);
+    }
   };
 
   const saveResult = async () => {
       if(!result) return;
-      const promise = fetch('/api/tools/history', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ toolType: 'labs', title: values.substring(0, 20) + '...', data: result })
-      }).then(() => fetchHistory());
-
-      toast.promise(promise, {
-          loading: 'Saving report...',
-          success: 'Report saved',
-          error: 'Save failed'
-      });
+      const loadingToast = toast.loading('Saving report...');
+      try {
+          await fetch('/api/tools/history', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ toolType: 'labs', title: values.substring(0, 20) + '...', data: result })
+          });
+          await fetchHistory();
+          toast.success('Report saved', { id: loadingToast });
+      } catch(e) {
+          toast.error('Save failed', { id: loadingToast });
+      }
   };
 
   return (
@@ -447,7 +496,7 @@ const LabView = () => {
   );
 };
 
-// --- 4. VIVA (OSCE) ---
+// --- 4. VIVA (OSCE) - RESTORED & FIXED: Browser TTS ---
 const VivaView = () => {
   const [active, setActive] = useState(false);
   const [topic, setTopic] = useState('General Medicine');
@@ -456,104 +505,45 @@ const VivaView = () => {
   const [evaluation, setEvaluation] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // --- TTS Function (Using Gemini TTS API) ---
-  const speakQuestion = async (text) => {
-    if (!text || loading) return;
+  // --- TTS Function (Browser Native) ---
+  const speakQuestion = (text) => {
+    if (!text || typeof window === 'undefined') return;
     
-    // Using Aoede voice (calm female voice)
-    const voiceName = "Aoede"; 
+    // Cancel existing speech
+    window.speechSynthesis.cancel();
     
-    const payload = {
-        contents: [{ parts: [{ text }] }],
-        generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: {
-                voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName }
-                }
-            }
-        },
-        model: "gemini-2.5-flash-preview-tts"
-    };
-
-    try {
-        const apiKey = ""; 
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
-        
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        
-        if (!response.ok) throw new Error("TTS API failed");
-
-        const result = await response.json();
-        const part = result?.candidates?.[0]?.content?.parts?.[0];
-        const audioData = part?.inlineData?.data;
-        const mimeType = part?.inlineData?.mimeType;
-
-        if (audioData && mimeType && mimeType.startsWith("audio/")) {
-            // Helper to convert PCM to WAV (necessary for raw audio)
-            const base64ToArrayBuffer = (base64) => {
-                const binaryString = atob(base64);
-                const len = binaryString.length;
-                const bytes = new Uint8Array(len);
-                for (let i = 0; i < len; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                return bytes.buffer;
-            };
-
-            const pcmToWav = (pcm16, sampleRate = 24000) => {
-                const buffer = new ArrayBuffer(44 + pcm16.length * 2);
-                const view = new DataView(buffer);
-                
-                // WAV header
-                const writeString = (v, offset) => { for (let i = 0; i < v.length; i++) view.setUint8(offset + i, v.charCodeAt(i)); };
-                writeString('RIFF', 0);
-                view.setUint32(4, 36 + pcm16.length * 2, true);
-                writeString('WAVE', 8);
-                view.setUint32(16, 16, true);
-                view.setUint16(20, 1, true); // PCM format
-                view.setUint16(22, 1, true); // Mono
-                view.setUint32(24, sampleRate, true);
-                view.setUint32(28, sampleRate * 2, true);
-                view.setUint16(32, 2, true);
-                view.setUint16(34, 16, true);
-                writeString('data', 36);
-                view.setUint32(40, pcm16.length * 2, true);
-
-                // Write PCM data
-                let offset = 44;
-                for (let i = 0; i < pcm16.length; i++, offset += 2) {
-                    view.setInt16(offset, pcm16[i], true);
-                }
-                
-                return new Blob([view], { type: 'audio/wav' });
-            };
-            
-            const sampleRateMatch = mimeType.match(/rate=(\d+)/);
-            const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
-            const pcmData = base64ToArrayBuffer(audioData);
-            const pcm16 = new Int16Array(pcmData);
-            const wavBlob = pcmToWav(pcm16, sampleRate);
-            
-            const audioUrl = URL.createObjectURL(wavBlob);
-            const audio = new Audio(audioUrl);
-            audio.play();
-        } else {
-             console.error("TTS output format error:", mimeType);
-        }
-    } catch(error) {
-        console.error("TTS playback error:", error);
-        toast.error("TTS Audio failed to play");
-    }
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Attempt to use a clear English voice (Google/Samantha/Zira)
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => 
+        v.name.includes('Google US English') || 
+        v.name.includes('Zira') || 
+        v.name.includes('Samantha')
+    ) || voices.find(v => v.lang.includes('en'));
+    
+    if (preferredVoice) utterance.voice = preferredVoice;
+    utterance.rate = 1; // Normal speed
+    
+    window.speechSynthesis.speak(utterance);
   };
+
+  // Load voices quirk
+  useEffect(() => {
+    const load = () => window.speechSynthesis.getVoices();
+    load();
+    window.speechSynthesis.onvoiceschanged = load;
+  }, []);
   
   const startViva = async () => {
+    if (!topic.trim()) {
+        toast.error("Please enter a subject.");
+        return;
+    }
     setActive(true);
     setLoading(true);
+    
+    // Use OpenRouter (FEATURE_MODELS.osce)
     const prompt = `Act as a strict medical professor. Ask a viva question about ${topic}. The tone should be formal and demanding. Short question.`;
     
     try {
@@ -562,7 +552,7 @@ const VivaView = () => {
         setLoading(false);
         speakQuestion(text);
     } catch(e) {
-        toast.error("Could not start exam.");
+        toast.error("Could not start exam. Check AI connection.");
         setLoading(false);
     }
   };
@@ -570,6 +560,7 @@ const VivaView = () => {
   const submitAnswer = async () => {
     if (!userAns) return;
     setLoading(true);
+    
     const prompt = `Professor asked: "${currentQ}". Student answered: "${userAns}". Grade it (0-10), give feedback, better answer, and next question. JSON.`;
     
     try {
@@ -579,8 +570,7 @@ const VivaView = () => {
         setLoading(false);
         setUserAns('');
         
-        // Play audio response
-        const audioText = `Your score is ${res.score} out of 10. ${res.feedback} The next question is: ${res.nextQuestion}`;
+        const audioText = `Score ${res.score}. ${res.feedback}. Next question: ${res.nextQuestion}`;
         speakQuestion(audioText);
     } catch(e) {
         toast.error("Error evaluating answer.");
@@ -627,7 +617,7 @@ const VivaView = () => {
   );
 };
 
-// --- 5. SYMPTOM CHECKER ---
+// --- 5. SYMPTOM CHECKER - FIXED: Educational Prompt + Qwen Model ---
 const SymptomCheckerView = () => {
     const [symptoms, setSymptoms] = useState('');
     const [result, setResult] = useState(null);
@@ -637,23 +627,32 @@ const SymptomCheckerView = () => {
         if (!symptoms) return;
         setLoading(true);
         setResult(null);
+        const loadingToast = toast.loading('Consulting AI Doctor...');
 
-        const promise = async () => {
-            const prompt = `Analyze the following patient symptoms from an Indian perspective: "${symptoms}". Act as a primary care doctor. Provide a primary likely diagnosis, immediate caution flags, an appropriate modern OTC medication or class (e.g., Paracetamol), specific home remedies (Ayurvedic/Desi tips like tulsi tea, hot compresses, etc.), and clear advice on when to see a doctor. JSON output.`;
-            return await callGemini(prompt, SYMPTOM_CHECKER_SCHEMA, FEATURE_MODELS.symptom_checker);
-        };
+        // FIX: Using FEATURE_MODELS.flashcards (Qwen) instead of symptom_checker (Llama)
+        // to avoid safety refusals, as Qwen is working for your other tools.
+        const prompt = `
+            CONTEXT: Educational Medical Case Study for Indian Medical Students. 
+            PATIENT COMPLAINT: "${symptoms}".
+            TASK: As a primary care doctor simulation, provide a structural assessment.
+            OUTPUT: JSON only.
+            FIELDS: 
+            - primaryDiagnosis: Likely condition.
+            - cautionFlag: Warning signs if any (e.g. 'High Fever', 'Dyspnea').
+            - modernMedication: Generic medicine name/class (e.g. 'Paracetamol').
+            - homeRemedy: Indian home remedy (Ayurvedic/Desi).
+            - whenToSeeDoctor: Critical signs to watch for.
+        `;
 
-        toast.promise(promise(), {
-            loading: 'Consulting AI Doctor...',
-            success: (res) => {
-                setResult(res);
-                return 'Analysis Complete';
-            },
-            error: 'Analysis failed'
-        });
-
-        try { await promise(); } catch (e) {}
-        setLoading(false);
+        try {
+            const res = await callGemini(prompt, SYMPTOM_CHECKER_SCHEMA, FEATURE_MODELS.flashcards);
+            setResult(res);
+            toast.success('Analysis Complete', { id: loadingToast });
+        } catch (e) {
+            toast.error('Analysis failed. Try being more specific.', { id: loadingToast });
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -844,6 +843,7 @@ const RadiologyView = () => {
         }
         setAiReport(null);
         setAnalyzing(true);
+        const loadingToast = toast.loading('Radiologist analyzing image...');
         
         const promise = async () => {
             const prompt = `Act as a Senior Radiologist. Analyze X-ray with stats: ${JSON.stringify(stats)}.
@@ -870,14 +870,14 @@ const RadiologyView = () => {
             return res;
         };
 
-        toast.promise(promise(), {
-            loading: 'Radiologist analyzing image...',
-            success: 'Diagnosis Report Ready',
-            error: 'Report generation failed'
-        });
-
-        try { await promise(); } catch(e) {}
-        setAnalyzing(false);
+        try {
+            await promise();
+            toast.success('Diagnosis Report Ready', { id: loadingToast });
+        } catch(e) {
+            toast.error('Report generation failed', { id: loadingToast });
+        } finally {
+            setAnalyzing(false);
+        }
     };
 
     return (
