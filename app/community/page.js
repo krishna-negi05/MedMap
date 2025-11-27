@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { 
-  Search, Upload, Filter, FileText, Menu,
+  Search, Upload, Filter, FileText, 
   Download, User, Users, Loader2, X, Trash2, 
   TrendingUp, Eye, ExternalLink, Maximize2,
   MessageCircle, HelpCircle, Coffee, Hash,
@@ -10,7 +10,7 @@ import {
   Scissors, Sparkles, Zap, Plus, ArrowUp, ArrowDown, Check, CheckCircle2,
   ThumbsUp, Send, Type, List, Image as ImageIcon, Link as LinkIcon,
   BarChart2, MoreHorizontal, Heart, Share2,
-  ChevronLeft, Paperclip, Smile, LogOut, Gift, Lock, Copy, Crown
+  ChevronLeft, Paperclip, Smile, LogOut
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -37,6 +37,11 @@ const NAV_THEMES = {
     hover: 'hover:bg-rose-50 hover:text-rose-700',
     icon: Hash
   },
+  wishes: { 
+    active: 'bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-lg', 
+    hover: 'hover:bg-fuchsia-50 hover:text-fuchsia-700',
+    icon: Gift
+  }
 };
 
 // --- 🎨 SUBJECT THEMES ---
@@ -58,9 +63,6 @@ const THEMES = {
   'Default': { color: 'slate', bg: 'from-slate-100 to-gray-200', text: 'text-slate-500', icon: FileText }
 };
 
-const getTheme = (subject) => THEMES[subject] || THEMES['Default'];
-const getDownloadUrl = (url) => url ? url.replace('/upload/', '/upload/fl_attachment/') : '#';
-
 // --- MAIN LAYOUT ---
 export default function CommunityPage() {
   const [activeTab, setActiveTab] = useState('library');
@@ -80,11 +82,8 @@ export default function CommunityPage() {
     <div className="max-w-7xl mx-auto min-h-[calc(100vh-64px)] flex flex-col md:flex-row bg-gradient-to-b from-[#fbfdff] to-[#f6f9ff]">
       
       {/* MOBILE BUTTON */}
-      <button 
-        onClick={() => setMobileOpen(true)} 
-        className="md:hidden fixed top-20 left-4 z-50 p-3 bg-white/90 backdrop-blur-md rounded-full shadow-lg border border-slate-200 text-slate-700 hover:text-teal-600 transition-colors"
-      >
-        <Menu size={24} />
+      <button onClick={() => setMobileOpen(true)} className="md:hidden fixed top-20 left-4 z-50 p-2 bg-white rounded-xl shadow-lg border border-slate-200 text-slate-600">
+        <Users size={20} />
       </button>
 
       {/* --- SIDEBAR (Desktop) --- */}
@@ -92,37 +91,26 @@ export default function CommunityPage() {
         <SidebarContent activeTab={activeTab} setActiveTab={setActiveTab} />
       </aside>
 
-      {/* --- SIDEBAR (Mobile Slide-out) --- */}
-      <AnimatePresence>
-        {mobileOpen && (
-          <div className="fixed inset-0 z-50 flex md:hidden">
-             <motion.div 
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="absolute inset-0 bg-black/40 backdrop-blur-sm" 
-                onClick={() => setMobileOpen(false)}
-             />
-             <motion.div 
-                initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="relative w-80 bg-white h-full shadow-2xl p-6 flex flex-col gap-4 z-50"
-             >
-                <div className="flex justify-between items-center mb-4">
-                    <span className="font-bold text-lg text-slate-800">Menu</span>
-                    <button onClick={() => setMobileOpen(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={24}/></button>
-                </div>
-                <SidebarContent activeTab={activeTab} setActiveTab={(t) => { setActiveTab(t); setMobileOpen(false); }} />
-             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* --- SIDEBAR (Mobile) --- */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden">
+           <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setMobileOpen(false)}></div>
+           <div className="relative w-72 bg-white h-full shadow-2xl p-6 flex flex-col gap-4">
+              <div className="flex justify-end"><button onClick={() => setMobileOpen(false)}><X size={24}/></button></div>
+              <SidebarContent activeTab={activeTab} setActiveTab={(t) => { setActiveTab(t); setMobileOpen(false); }} />
+           </div>
+        </div>
+      )}
 
       {/* --- CONTENT --- */}
-      <main className="flex-1 p-4 md:p-8 overflow-hidden pt-16 md:pt-8">
+      <main className="flex-1 p-4 md:p-8 overflow-hidden">
         {renderContent()}
       </main>
     </div>
   );
 }
 
+// ... (SidebarContent, NavButton remain unchanged)
 function SidebarContent({ activeTab, setActiveTab }) {
   return (
     <>
@@ -143,7 +131,8 @@ function SidebarContent({ activeTab, setActiveTab }) {
         <NavButton id="groups" label="Study Groups" active={activeTab} onClick={setActiveTab} hint="Topic rooms" />
         
         <div className="my-2 border-t border-slate-100 mx-4"></div>
-      
+        
+        <NavButton id="wishes" label="Wish Generator" active={activeTab} onClick={setActiveTab} hint="AI Gift Websites" />
       </div>
 
       <div className="mt-auto p-4 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg relative overflow-hidden group cursor-pointer">
@@ -178,8 +167,151 @@ function NavButton({ id, active, onClick, label, hint }) {
   );
 }
 
+/* ==================== 1. WISHES VIEW (PREMIUM) ==================== */
 
-/* ==================== 2. GROUPS VIEW (REDESIGNED) ==================== */
+function WishesView() {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  
+  // Form State
+  const [formData, setFormData] = useState({ recipient: '', occasion: 'Birthday', details: '' });
+  const [genLoading, setGenLoading] = useState(false);
+  const [resultUrl, setResultUrl] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/auth/session').then(r => r.json()).then(d => {
+        setUser(d.user);
+        setLoading(false);
+    });
+  }, []);
+
+  // Mock Check: In production check user.role === 'premium'
+  const isPremium = user?.role === 'premium' || user?.role === 'admin'; 
+
+  const handleGenerate = async () => {
+    if (!formData.recipient || !formData.details) return toast.error("Fill all fields!");
+    setGenLoading(true);
+    try {
+        const res = await fetch('/api/wishes/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(formData)
+        });
+        const data = await res.json();
+        if (data.ok) {
+            setResultUrl(data.url);
+            toast.success("Wish Site Deployed! 🚀");
+        } else throw new Error();
+    } catch(e) { toast.error("Failed to generate"); }
+    finally { setGenLoading(false); }
+  };
+
+  const mockUpgrade = () => {
+      toast.success("Upgraded to Premium (Demo)!");
+      setUser({...user, role: 'premium'});
+  };
+
+  if (loading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin text-fuchsia-600"/></div>;
+
+  return (
+    <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+      <div className="text-center mb-10">
+        <div className="inline-flex p-4 bg-fuchsia-100 text-fuchsia-600 rounded-3xl mb-4 shadow-sm transform rotate-3">
+            <Gift size={32} strokeWidth={2.5}/>
+        </div>
+        <h1 className="text-4xl font-black text-slate-900 mb-3 tracking-tight">AI Wish Generator</h1>
+        <p className="text-slate-500 text-lg">Create deployed websites for your friends instantly.</p>
+      </div>
+
+      {!isPremium ? (
+        // --- PREMIUM LOCK SCREEN ---
+        <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 md:p-12 text-center relative overflow-hidden shadow-xl">
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-fuchsia-50 via-white to-white z-0"></div>
+            <div className="relative z-10 flex flex-col items-center">
+                <div className="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center text-white mb-6 shadow-2xl ring-4 ring-slate-100">
+                    <Lock size={32}/>
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900 mb-2">Premium Feature</h2>
+                <p className="text-slate-500 max-w-md mb-8">
+                    Generate unlimited personalized websites for birthdays, anniversaries, and passing exams. Hosted instantly on our servers.
+                </p>
+                <button onClick={mockUpgrade} className="bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white px-8 py-4 rounded-2xl font-bold shadow-lg shadow-fuchsia-200 hover:scale-105 transition-transform flex items-center gap-2">
+                    <Crown size={20}/> Upgrade to Access
+                </button>
+            </div>
+        </div>
+      ) : (
+        // --- GENERATOR FORM ---
+        <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-xl relative overflow-hidden">
+            {!resultUrl ? (
+                <div className="space-y-6 relative z-10">
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-400 uppercase ml-1">Recipient Name</label>
+                            <input 
+                                className="w-full p-4 bg-slate-50 border-transparent focus:bg-white focus:border-fuchsia-200 focus:ring-4 focus:ring-fuchsia-500/10 rounded-2xl outline-none font-bold text-slate-700 transition-all"
+                                placeholder="Dr. Ayesha"
+                                value={formData.recipient}
+                                onChange={e => setFormData({...formData, recipient: e.target.value})}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-400 uppercase ml-1">Occasion</label>
+                            <select 
+                                className="w-full p-4 bg-slate-50 border-transparent focus:bg-white focus:border-fuchsia-200 focus:ring-4 focus:ring-fuchsia-500/10 rounded-2xl outline-none font-bold text-slate-700 transition-all appearance-none"
+                                onChange={e => setFormData({...formData, occasion: e.target.value})}
+                            >
+                                <option>Birthday</option>
+                                <option>Work Anniversary</option>
+                                <option>Exam Success</option>
+                                <option>Get Well Soon</option>
+                                <option>Christmas</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Personal Details (For AI)</label>
+                        <textarea 
+                            className="w-full h-32 p-4 bg-slate-50 border-transparent focus:bg-white focus:border-fuchsia-200 focus:ring-4 focus:ring-fuchsia-500/10 rounded-2xl outline-none font-medium text-slate-700 resize-none transition-all placeholder:text-slate-400"
+                            placeholder="e.g. Loves Neurology, coffee, and cats. Add a medical pun about neurons."
+                            value={formData.details}
+                            onChange={e => setFormData({...formData, details: e.target.value})}
+                        />
+                    </div>
+                    <button 
+                        onClick={handleGenerate} 
+                        disabled={genLoading}
+                        className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg hover:bg-slate-800 disabled:opacity-70 transition-all flex items-center justify-center gap-3 shadow-xl"
+                    >
+                        {genLoading ? <Loader2 className="animate-spin"/> : <><Sparkles className="text-fuchsia-300"/> Generate Website</>}
+                    </button>
+                </div>
+            ) : (
+                <div className="text-center py-8 animate-in zoom-in-95">
+                    <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <CheckCircle2 size={40}/>
+                    </div>
+                    <h3 className="text-2xl font-bold text-slate-900 mb-2">Website is Live!</h3>
+                    <p className="text-slate-500 mb-8">Your wish has been coded and deployed.</p>
+                    
+                    <div className="flex gap-4 justify-center">
+                        <a href={resultUrl} target="_blank" className="bg-white border border-slate-200 text-slate-700 px-6 py-3 rounded-xl font-bold hover:bg-slate-50 flex items-center gap-2">
+                            <ExternalLink size={18}/> View
+                        </a>
+                        <button onClick={() => {navigator.clipboard.writeText(resultUrl); toast.success("Copied!");}} className="bg-fuchsia-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-fuchsia-700 shadow-lg shadow-fuchsia-200 flex items-center gap-2">
+                            <Copy size={18}/> Copy URL
+                        </button>
+                    </div>
+                    <button onClick={() => setResultUrl(null)} className="mt-8 text-sm text-slate-400 font-bold hover:text-slate-600">Create Another</button>
+                </div>
+            )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ==================== GROUPS VIEW ==================== */
 
 function GroupsView() {
   const [groups, setGroups] = useState([]);
@@ -223,47 +355,24 @@ function GroupsView() {
     return <ChatRoom group={selectedGroup} currentUser={currentUser} onBack={() => { setSelectedGroup(null); fetchGroups(); }} />;
   }
 
-  // Premium Check for Creation
-  const isPremium = currentUser?.role === 'premium' || currentUser?.role === 'admin';
-
-  // Define gradients for random assignment if no avatar
-  const GRADIENTS = [
-    'from-rose-400 to-orange-400',
-    'from-violet-400 to-indigo-400',
-    'from-teal-400 to-emerald-400',
-    'from-amber-400 to-yellow-400',
-    'from-cyan-400 to-blue-400',
-  ];
-
   return (
-    <div className="max-w-5xl mx-auto animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div className="max-w-4xl mx-auto animate-in fade-in duration-500">
+      <div className="flex justify-between items-center mb-8">
         <div>
-            <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">Study Groups</h1>
-            <p className="text-slate-500 font-medium mt-1">Collaborate with peers in real-time.</p>
+            <h1 className="text-3xl font-black text-slate-900">Study Groups</h1>
+            <p className="text-slate-500 font-medium">Join topic-based rooms or create your own squad.</p>
         </div>
-        <button 
-            onClick={() => {
-                if (isPremium) setShowCreate(true);
-                else toast((t) => (
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
-                        <Lock size={16}/> Premium Feature
-                        <button onClick={() => toast.dismiss(t.id)} className="ml-auto text-xs text-slate-400">Dismiss</button>
-                    </div>
-                ));
-            }} 
-            className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold shadow-xl shadow-slate-900/20 flex items-center gap-2 hover:scale-105 transition-all active:scale-95 relative overflow-hidden"
-        >
-            {!isPremium && <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] flex items-center justify-center"><Lock size={16}/></div>}
-            <Plus size={20}/> Create Squad
+        <button onClick={() => setShowCreate(true)} className="bg-rose-600 text-white px-6 py-3 rounded-2xl font-bold shadow-xl shadow-rose-200 flex items-center gap-2 hover:bg-rose-700 transition-all active:scale-95">
+            <Plus size={20}/> Create Group
         </button>
       </div>
 
+      {/* Search Bar for Groups */}
       <div className="relative w-full mb-8">
             <Search size={20} className="text-slate-400 absolute left-4 top-3.5 group-focus-within:text-rose-500 transition-colors"/>
             <input 
-                type="text" placeholder="Find a topic or squad..." 
-                className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 outline-none transition-all font-bold text-slate-700 shadow-sm"
+                type="text" placeholder="Search groups..." 
+                className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-rose-500/20 focus:border-rose-500 outline-none transition-all font-bold text-slate-700 shadow-sm"
                 value={search} 
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={handleSearch}
@@ -272,56 +381,16 @@ function GroupsView() {
 
       {showCreate && <CreateGroupModal onClose={() => setShowCreate(false)} onRefresh={fetchGroups} />}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {loading ? (
-            <div className="col-span-full flex justify-center py-20"><Loader2 className="animate-spin w-8 h-8 text-rose-400"/></div>
+            <div className="col-span-2 flex justify-center py-20"><Loader2 className="animate-spin w-8 h-8 text-rose-400"/></div>
         ) : groups.length === 0 ? (
-            <div className="col-span-full text-center py-20 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
+            <div className="col-span-2 text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
                 <p className="text-slate-400 font-bold">No active groups found.</p>
-                {isPremium && <button onClick={() => setShowCreate(true)} className="text-rose-600 font-bold hover:underline mt-2">Create one now</button>}
             </div>
         ) : (
-            groups.map((group, idx) => (
-                <div 
-                    key={group.id} 
-                    onClick={() => group.isMember && setSelectedGroup(group)}
-                    className={`
-                        relative bg-white rounded-[2rem] p-1 shadow-sm border border-slate-200 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group
-                        ${group.isMember ? 'cursor-pointer ring-1 ring-slate-100' : ''}
-                    `}
-                >
-                    <div className="bg-slate-50 rounded-[1.8rem] p-6 h-full flex flex-col relative overflow-hidden">
-                        {/* Background Decor */}
-                        <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${GRADIENTS[idx % GRADIENTS.length]} opacity-10 rounded-bl-[100px] -mr-4 -mt-4 transition-transform group-hover:scale-150 duration-700`}></div>
-                        
-                        <div className="flex justify-between items-start mb-4 relative z-10">
-                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg bg-gradient-to-br ${GRADIENTS[idx % GRADIENTS.length]}`}>
-                                {group.avatar ? (
-                                    <img src={group.avatar} className="w-full h-full object-cover rounded-2xl"/>
-                                ) : (
-                                    <span className="text-xl font-bold">{group.name[0]}</span>
-                                )}
-                            </div>
-                            {group.isMember ? (
-                                <span className="bg-white/80 backdrop-blur text-slate-700 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide flex items-center gap-1 shadow-sm">
-                                    Joined <CheckCircle2 size={12} className="text-green-500"/>
-                                </span>
-                            ) : (
-                                <JoinButton group={group} onJoin={(g) => setSelectedGroup(g)} />
-                            )}
-                        </div>
-
-                        <h3 className="font-bold text-xl text-slate-900 mb-2 leading-tight relative z-10 line-clamp-1">{group.name}</h3>
-                        <p className="text-slate-500 text-sm line-clamp-2 mb-6 font-medium relative z-10 h-10">{group.description || "Join us to discuss and learn together."}</p>
-
-                        <div className="mt-auto flex items-center gap-3 pt-4 border-t border-slate-200/60 relative z-10">
-                            <div className="flex -space-x-2">
-                                {[1,2,3].map(i => <div key={i} className="w-6 h-6 rounded-full bg-slate-300 border-2 border-slate-50"></div>)}
-                            </div>
-                            <span className="text-xs font-bold text-slate-400">{group.memberCount} Members</span>
-                        </div>
-                    </div>
-                </div>
+            groups.map(group => (
+                <GroupCard key={group.id} group={group} onSelect={setSelectedGroup} />
             ))
         )}
       </div>
@@ -329,37 +398,59 @@ function GroupsView() {
   );
 }
 
-function JoinButton({ group, onJoin }) {
-    const [joining, setJoining] = useState(false);
-    const handleJoin = async (e) => {
-        e.stopPropagation();
-        setJoining(true);
-        try {
-            const res = await fetch('/api/community/groups/join', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ groupId: group.id })
-            });
-            if (res.ok) {
-                toast.success(`Welcome to ${group.name}!`);
-                onJoin({ ...group, isMember: true });
-            }
-        } catch(e) { toast.error("Error joining"); }
-        finally { setJoining(false); }
-    };
+function GroupCard({ group, onSelect }) {
+  const [joining, setJoining] = useState(false);
 
-    return (
-        <button 
-            onClick={handleJoin} 
-            disabled={joining}
-            className="bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold px-4 py-2 rounded-xl shadow-sm border border-slate-200 transition-all active:scale-95 disabled:opacity-50"
-        >
-            {joining ? <Loader2 size={14} className="animate-spin"/> : 'Join'}
-        </button>
-    );
+  const handleJoin = async (e) => {
+    e.stopPropagation();
+    setJoining(true);
+    try {
+        const res = await fetch('/api/community/groups/join', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ groupId: group.id })
+        });
+        if (res.ok) {
+            toast.success(`Joined ${group.name}!`);
+            onSelect({ ...group, isMember: true }); // Optimistic update
+        }
+    } catch(e) { toast.error("Failed to join"); }
+    finally { setJoining(false); }
+  };
+
+  return (
+    <div 
+        onClick={() => group.isMember && onSelect(group)}
+        className={`bg-white p-6 rounded-3xl border border-slate-200 shadow-sm transition-all group relative overflow-hidden ${group.isMember ? 'cursor-pointer hover:border-rose-300 hover:shadow-md' : ''}`}
+    >
+        <div className="flex items-start justify-between mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-rose-100 to-orange-100 rounded-2xl flex items-center justify-center text-rose-600 shadow-inner">
+                <Hash size={24}/>
+            </div>
+            {group.isMember ? (
+                <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide flex items-center gap-1">
+                    Joined <Check size={12}/>
+                </span>
+            ) : (
+                <button 
+                    onClick={handleJoin} 
+                    disabled={joining}
+                    className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50"
+                >
+                    {joining ? <Loader2 size={14} className="animate-spin"/> : 'Join'}
+                </button>
+            )}
+        </div>
+        
+        <h3 className="font-bold text-lg text-slate-900 mb-1">{group.name}</h3>
+        <p className="text-slate-500 text-sm line-clamp-2 mb-4 h-10">{group.description || "No description provided."}</p>
+        
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-400 border-t border-slate-100 pt-4">
+            <Users size={14}/> {group.memberCount} Members
+        </div>
+    </div>
+  );
 }
-
-// --- ChatRoom (Required for Groups View) ---
 
 function ChatRoom({ group, currentUser, onBack }) {
     const [messages, setMessages] = useState([]);
@@ -367,12 +458,12 @@ function ChatRoom({ group, currentUser, onBack }) {
     const [sending, setSending] = useState(false);
     const [attachment, setAttachment] = useState(null);
     const [uploading, setUploading] = useState(false);
-    const [showReactionPicker, setShowReactionPicker] = useState(null); 
+    const [showReactionPicker, setShowReactionPicker] = useState(null); // ID of message to react to
     const scrollRef = useRef(null);
 
     useEffect(() => {
         fetchMessages();
-        const interval = setInterval(fetchMessages, 3000); 
+        const interval = setInterval(fetchMessages, 3000); // Poll every 3s for real-time feel
         return () => clearInterval(interval);
     }, [group.id]);
 
@@ -387,6 +478,8 @@ function ChatRoom({ group, currentUser, onBack }) {
             const res = await fetch(`/api/community/groups/${group.id}/messages`);
             const json = await res.json();
             if (json.ok) {
+                 // Only update if length changed or last message ID changed to avoid jitters, 
+                 // or just naive replace for MVP (Simplest)
                  setMessages(json.data);
             }
         } catch(e) {}
@@ -448,12 +541,14 @@ function ChatRoom({ group, currentUser, onBack }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(msgData)
             });
+            // Ensure we fetch the real message (and its ID) immediately
             fetchMessages(); 
         } catch(e) { toast.error("Failed to send"); }
         finally { setSending(false); }
     };
 
     const handleLeave = async () => {
+        // Confirmation toast instead of alert
         toast((t) => (
             <div className="flex flex-col gap-2 min-w-[200px]">
                 <p className="text-sm font-bold text-slate-800">Leave this group?</p>
@@ -487,11 +582,13 @@ function ChatRoom({ group, currentUser, onBack }) {
     };
 
     const handleReaction = async (messageId, emoji) => {
-        setShowReactionPicker(null); 
+        setShowReactionPicker(null); // Close picker
         
+        // Check if it's a temp message (no real ID), skip if so
         const targetMsg = messages.find(m => m.id === messageId);
         if (targetMsg?.temp) return;
 
+        // Optimistic update
         setMessages(prev => prev.map(msg => {
             if (msg.id !== messageId) return msg;
             
@@ -513,8 +610,10 @@ function ChatRoom({ group, currentUser, onBack }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ messageId, emoji })
             });
+            // No immediate fetch needed as UI is updated optimistically, 
+            // and polling will sync eventually
         } catch (error) {
-            fetchMessages(); 
+            fetchMessages(); // Revert on error
         }
     };
 
@@ -710,6 +809,7 @@ function SocialView() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [filter, setFilter] = useState('all');
   const [currentUser, setCurrentUser] = useState(null);
   const [search, setSearch] = useState('');
 
@@ -885,6 +985,7 @@ function CreatePostModal({ onClose, onRefresh, user }) {
                         <button onClick={() => setType('poll')} className={`p-2 rounded-xl transition-all ${type === 'poll' ? 'bg-amber-50 text-amber-600' : 'text-slate-400 hover:bg-slate-50'}`}>
                             <BarChart2 size={20}/>
                         </button>
+                        <button className="p-2 rounded-xl text-slate-300 cursor-not-allowed"><ImageIcon size={20}/></button>
                     </div>
                     <button 
                         onClick={handleSubmit} 
@@ -920,6 +1021,7 @@ function PostCard({ post, currentUser, onRefresh }) {
             body: JSON.stringify({ postId: post.id })
         });
     } catch (e) {
+        // Revert on error
         setIsLiked(prevLiked);
         setLikesCount(prevCount);
     }
@@ -1004,21 +1106,24 @@ function PollComponent({ post, currentUser }) {
         let newUserVotedId = userVotedId;
 
         if (userVotedId === optionId) {
+            // Toggle OFF
             newOptions = newOptions.map(opt => 
                 opt.id === optionId ? { ...opt, count: Math.max(0, opt.count - 1) } : opt
             );
             newTotal = Math.max(0, newTotal - 1);
             newUserVotedId = null;
         } else {
+            // Vote ON or Switch
             newOptions = newOptions.map(opt => {
-                if (opt.id === optionId) return { ...opt, count: opt.count + 1 }; 
-                if (opt.id === userVotedId) return { ...opt, count: Math.max(0, opt.count - 1) }; 
+                if (opt.id === optionId) return { ...opt, count: opt.count + 1 }; // Add to new
+                if (opt.id === userVotedId) return { ...opt, count: Math.max(0, opt.count - 1) }; // Remove from old
                 return opt;
             });
             
             if (!userVotedId) {
-                newTotal += 1; 
+                newTotal += 1; // New vote
             } 
+            // If switching, total remains same
             newUserVotedId = optionId;
         }
         
@@ -1033,6 +1138,7 @@ function PollComponent({ post, currentUser }) {
                 body: JSON.stringify({ postId: post.id, optionId })
             });
         } catch(e) {
+            // Revert
             setOptions(prevOptions);
             setTotalVotes(prevTotal);
             setUserVotedId(prevUserVotedId);
@@ -1053,9 +1159,12 @@ function PollComponent({ post, currentUser }) {
                         disabled={loading}
                         className="relative w-full text-left h-10 rounded-lg overflow-hidden bg-slate-50 border border-slate-200 transition-all hover:border-amber-300 group"
                     >
+                        {/* Progress Bar */}
                         {totalVotes > 0 && (
                             <div className={`absolute top-0 left-0 h-full transition-all duration-500 ${isSelected ? 'bg-amber-100' : 'bg-slate-200/50'}`} style={{ width: `${percentage}%` }}></div>
                         )}
+                        
+                        {/* Text & Percent */}
                         <div className="absolute inset-0 flex items-center justify-between px-4 z-10">
                             <span className={`text-sm font-bold ${isSelected ? 'text-amber-700' : 'text-slate-700'}`}>
                                 {opt.text} {isSelected && <CheckCircle2 size={14} className="inline ml-1"/>}
@@ -1138,7 +1247,7 @@ function CommentsSection({ postId, currentUser }) {
     );
 }
 
-// --- Library & QA Views ---
+// --- Library & QA Views (Full Implementation) ---
 
 function LibraryView() {
   const [showUpload, setShowUpload] = useState(false);
@@ -1832,6 +1941,7 @@ function PreviewModal({ resource, onClose }) {
   );
 }
 
+// ... UploadModal (Same as previous, just ensure imports match) ...
 function UploadModal({ onClose, onRefresh, subjectsMap }) {
   const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
@@ -1934,60 +2044,6 @@ function UploadModal({ onClose, onRefresh, subjectsMap }) {
                     </button>
                 </div>
             )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AskQuestionModal({ onClose, onRefresh }) {
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [tags, setTags] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async () => {
-    if (!title || !content) return toast.error("Title and Content required");
-    setLoading(true);
-    try {
-      const tagList = tags.split(',').map(t => t.trim()).filter(Boolean);
-      const res = await fetch('/api/community/questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content, tags: tagList })
-      });
-      if (res.ok) {
-        toast.success("Question Posted!");
-        onRefresh();
-        onClose();
-      } else throw new Error();
-    } catch(e) { toast.error("Failed to post"); }
-    finally { setLoading(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 animate-in zoom-in-95">
-        <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-xl text-slate-900">Ask Question</h3>
-            <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
-        </div>
-        <div className="space-y-4">
-            <div>
-                <label className="text-xs font-bold text-slate-500 uppercase ml-1">Question Title</label>
-                <input autoFocus value={title} onChange={e=>setTitle(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl font-bold text-slate-800 outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500" placeholder="e.g. Mechanism of action of Aspirin?"/>
-            </div>
-            <div>
-                <label className="text-xs font-bold text-slate-500 uppercase ml-1">Details</label>
-                <textarea value={content} onChange={e=>setContent(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl text-sm text-slate-600 outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 h-32 resize-none" placeholder="Describe your doubt in detail..."/>
-            </div>
-            <div>
-                <label className="text-xs font-bold text-slate-500 uppercase ml-1">Tags (comma separated)</label>
-                <input value={tags} onChange={e=>setTags(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl text-sm text-slate-600 outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500" placeholder="e.g. Pharmacology, NSAIDs"/>
-            </div>
-            <button onClick={handleSubmit} disabled={loading} className="w-full py-3 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 transition-all disabled:opacity-50">
-                {loading ? <Loader2 className="animate-spin mx-auto"/> : 'Post Question'}
-            </button>
         </div>
       </div>
     </div>
