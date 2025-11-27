@@ -37,11 +37,6 @@ const NAV_THEMES = {
     hover: 'hover:bg-rose-50 hover:text-rose-700',
     icon: Hash
   },
-  wishes: { 
-    active: 'bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-lg', 
-    hover: 'hover:bg-fuchsia-50 hover:text-fuchsia-700',
-    icon: Gift
-  }
 };
 
 // --- 🎨 SUBJECT THEMES ---
@@ -132,7 +127,7 @@ function SidebarContent({ activeTab, setActiveTab }) {
         
         <div className="my-2 border-t border-slate-100 mx-4"></div>
         
-        <NavButton id="wishes" label="Wish Generator" active={activeTab} onClick={setActiveTab} hint="AI Gift Websites" />
+       
       </div>
 
       <div className="mt-auto p-4 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg relative overflow-hidden group cursor-pointer">
@@ -164,150 +159,6 @@ function NavButton({ id, active, onClick, label, hint }) {
       </div>
       {isActive && <div className="w-2 h-8 rounded-full bg-white/30" />}
     </button>
-  );
-}
-
-/* ==================== 1. WISHES VIEW (PREMIUM) ==================== */
-
-function WishesView() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  
-  // Form State
-  const [formData, setFormData] = useState({ recipient: '', occasion: 'Birthday', details: '' });
-  const [genLoading, setGenLoading] = useState(false);
-  const [resultUrl, setResultUrl] = useState(null);
-
-  useEffect(() => {
-    fetch('/api/auth/session').then(r => r.json()).then(d => {
-        setUser(d.user);
-        setLoading(false);
-    });
-  }, []);
-
-  // Mock Check: In production check user.role === 'premium'
-  const isPremium = user?.role === 'premium' || user?.role === 'admin'; 
-
-  const handleGenerate = async () => {
-    if (!formData.recipient || !formData.details) return toast.error("Fill all fields!");
-    setGenLoading(true);
-    try {
-        const res = await fetch('/api/wishes/generate', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(formData)
-        });
-        const data = await res.json();
-        if (data.ok) {
-            setResultUrl(data.url);
-            toast.success("Wish Site Deployed! 🚀");
-        } else throw new Error();
-    } catch(e) { toast.error("Failed to generate"); }
-    finally { setGenLoading(false); }
-  };
-
-  const mockUpgrade = () => {
-      toast.success("Upgraded to Premium (Demo)!");
-      setUser({...user, role: 'premium'});
-  };
-
-  if (loading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin text-fuchsia-600"/></div>;
-
-  return (
-    <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4">
-      <div className="text-center mb-10">
-        <div className="inline-flex p-4 bg-fuchsia-100 text-fuchsia-600 rounded-3xl mb-4 shadow-sm transform rotate-3">
-            <Gift size={32} strokeWidth={2.5}/>
-        </div>
-        <h1 className="text-4xl font-black text-slate-900 mb-3 tracking-tight">AI Wish Generator</h1>
-        <p className="text-slate-500 text-lg">Create deployed websites for your friends instantly.</p>
-      </div>
-
-      {!isPremium ? (
-        // --- PREMIUM LOCK SCREEN ---
-        <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 md:p-12 text-center relative overflow-hidden shadow-xl">
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-fuchsia-50 via-white to-white z-0"></div>
-            <div className="relative z-10 flex flex-col items-center">
-                <div className="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center text-white mb-6 shadow-2xl ring-4 ring-slate-100">
-                    <Lock size={32}/>
-                </div>
-                <h2 className="text-2xl font-bold text-slate-900 mb-2">Premium Feature</h2>
-                <p className="text-slate-500 max-w-md mb-8">
-                    Generate unlimited personalized websites for birthdays, anniversaries, and passing exams. Hosted instantly on our servers.
-                </p>
-                <button onClick={mockUpgrade} className="bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white px-8 py-4 rounded-2xl font-bold shadow-lg shadow-fuchsia-200 hover:scale-105 transition-transform flex items-center gap-2">
-                    <Crown size={20}/> Upgrade to Access
-                </button>
-            </div>
-        </div>
-      ) : (
-        // --- GENERATOR FORM ---
-        <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-xl relative overflow-hidden">
-            {!resultUrl ? (
-                <div className="space-y-6 relative z-10">
-                    <div className="grid md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-400 uppercase ml-1">Recipient Name</label>
-                            <input 
-                                className="w-full p-4 bg-slate-50 border-transparent focus:bg-white focus:border-fuchsia-200 focus:ring-4 focus:ring-fuchsia-500/10 rounded-2xl outline-none font-bold text-slate-700 transition-all"
-                                placeholder="Dr. Ayesha"
-                                value={formData.recipient}
-                                onChange={e => setFormData({...formData, recipient: e.target.value})}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-400 uppercase ml-1">Occasion</label>
-                            <select 
-                                className="w-full p-4 bg-slate-50 border-transparent focus:bg-white focus:border-fuchsia-200 focus:ring-4 focus:ring-fuchsia-500/10 rounded-2xl outline-none font-bold text-slate-700 transition-all appearance-none"
-                                onChange={e => setFormData({...formData, occasion: e.target.value})}
-                            >
-                                <option>Birthday</option>
-                                <option>Work Anniversary</option>
-                                <option>Exam Success</option>
-                                <option>Get Well Soon</option>
-                                <option>Christmas</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Personal Details (For AI)</label>
-                        <textarea 
-                            className="w-full h-32 p-4 bg-slate-50 border-transparent focus:bg-white focus:border-fuchsia-200 focus:ring-4 focus:ring-fuchsia-500/10 rounded-2xl outline-none font-medium text-slate-700 resize-none transition-all placeholder:text-slate-400"
-                            placeholder="e.g. Loves Neurology, coffee, and cats. Add a medical pun about neurons."
-                            value={formData.details}
-                            onChange={e => setFormData({...formData, details: e.target.value})}
-                        />
-                    </div>
-                    <button 
-                        onClick={handleGenerate} 
-                        disabled={genLoading}
-                        className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg hover:bg-slate-800 disabled:opacity-70 transition-all flex items-center justify-center gap-3 shadow-xl"
-                    >
-                        {genLoading ? <Loader2 className="animate-spin"/> : <><Sparkles className="text-fuchsia-300"/> Generate Website</>}
-                    </button>
-                </div>
-            ) : (
-                <div className="text-center py-8 animate-in zoom-in-95">
-                    <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <CheckCircle2 size={40}/>
-                    </div>
-                    <h3 className="text-2xl font-bold text-slate-900 mb-2">Website is Live!</h3>
-                    <p className="text-slate-500 mb-8">Your wish has been coded and deployed.</p>
-                    
-                    <div className="flex gap-4 justify-center">
-                        <a href={resultUrl} target="_blank" className="bg-white border border-slate-200 text-slate-700 px-6 py-3 rounded-xl font-bold hover:bg-slate-50 flex items-center gap-2">
-                            <ExternalLink size={18}/> View
-                        </a>
-                        <button onClick={() => {navigator.clipboard.writeText(resultUrl); toast.success("Copied!");}} className="bg-fuchsia-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-fuchsia-700 shadow-lg shadow-fuchsia-200 flex items-center gap-2">
-                            <Copy size={18}/> Copy URL
-                        </button>
-                    </div>
-                    <button onClick={() => setResultUrl(null)} className="mt-8 text-sm text-slate-400 font-bold hover:text-slate-600">Create Another</button>
-                </div>
-            )}
-        </div>
-      )}
-    </div>
   );
 }
 
