@@ -658,7 +658,7 @@ const SymptomCheckerView = () => {
     return (
         <div className="h-full flex flex-col max-w-2xl mx-auto w-full">
             <div className="flex justify-between items-center mb-6">
-                <div><h3 className="text-xl font-bold mb-1 text-slate-900">Home Symptom Analyzer</h3><p className="text-slate-500 text-sm">Get quick advice for common ailments in any language.</p></div>
+                <div><h3 className="text-xl font-bold mb-1 text-slate-900">Home Symptom Analyzer</h3><p className="text-slate-500 text-sm">Get quick advice for common ailments.</p></div>
             </div>
 
             <textarea 
@@ -695,7 +695,7 @@ const SymptomCheckerView = () => {
 
                             {/* Home Remedy */}
                             <div className="p-3 bg-green-50 rounded-xl border border-green-100">
-                                <span className="text-xs font-bold text-green-700 uppercase tracking-wide flex items-center gap-1"><Home size={12}/> Home Remedy</span>
+                                <span className="text-xs font-bold text-green-700 uppercase tracking-wide flex items-center gap-1"><Home size={12}/> Desi/Home Remedy</span>
                                 <p className="text-sm text-green-900 mt-1 font-medium">{result.homeRemedy}</p>
                             </div>
                         </div>
@@ -978,7 +978,7 @@ export default function ToolsPage() {
     { id: 'flashcards', icon: Layers, label: 'Flashcards', desc: 'AI Decks' },
     { id: 'pharma', icon: Pill, label: 'Pharma', desc: 'Interactions' },
     { id: 'labs', icon: FlaskConical, label: 'Lab AI', desc: 'Interpreter' },
-    { id: 'symptom_checker', icon: Home, label: 'Home Check', desc: 'Home Remedies' },
+    { id: 'symptom_checker', icon: Home, label: 'Home Check', desc: 'Desi Remedies' },
     { id: 'viva', icon: Mic, label: 'Viva Voice', desc: 'Oral Exam' },
     { id: 'radiology', icon: ImageIcon, label: 'Radiology', desc: 'X-Ray Sim' }
   ];
