@@ -1,9 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -41,10 +38,12 @@ model User {
   pollVotes     PollVote[]
   ownedGroups   Group[]        @relation("GroupAdmin")
   groups        GroupMember[]
-  // messages      Message[] // <--- REMOVED THIS: It was causing the conflict
-  senderMessages Message[]     @relation("SenderMessages") // <--- This is the correct inverse for Message.sender
-  downloads     Download[]     // <--- ADDED THIS: Inverse relation for Download tracking
-  messageReactions MessageReaction[] // <--- ADDED THIS
+  senderMessages Message[]     @relation("SenderMessages") 
+  downloads     Download[]     
+  messageReactions MessageReaction[]
+  
+  // Wishes (The new feature)
+  wishes        Wish[]
 
   // Preferences
   mindmapDepth     Int             @default(3)
@@ -143,7 +142,7 @@ model Resource {
   userId      String
   user        User     @relation(fields: [userId], references: [id])
   
-  downloadHistory Download[] // <--- ADDED THIS: Inverse relation to track individual downloads
+  downloadHistory Download[] 
   
   createdAt   DateTime @default(now())
 }
@@ -300,7 +299,7 @@ model Download {
   
   createdAt  DateTime @default(now())
 
-  @@unique([userId, resourceId]) // <--- Ensures 1 user can't count twice for same file
+  @@unique([userId, resourceId]) 
 }
 
 model Message {
@@ -313,7 +312,7 @@ model Message {
   group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   
   senderId    String
-  sender      User     @relation("SenderMessages", fields: [senderId], references: [id]) // Added relation name
+  sender      User     @relation("SenderMessages", fields: [senderId], references: [id]) 
   
   reactions   MessageReaction[]
   
@@ -329,4 +328,21 @@ model MessageReaction {
   message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
   
   @@unique([userId, messageId, emoji])
+}
+
+model Wish {
+  id        String   @id @default(cuid())
+  slug      String   @unique // The unique URL part (e.g., "ayesha-bday-2025")
+  recipient String
+  occasion  String   // "Birthday", "Anniversary"
+  details   String?  // "Loves coffee, neurology resident"
+  
+  // This stores the actual AI-generated HTML/CSS code
+  htmlContent String @db.Text 
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  views     Int      @default(0)
+  createdAt DateTime @default(now())
 }
