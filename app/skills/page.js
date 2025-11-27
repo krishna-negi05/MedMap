@@ -1,340 +1,405 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { 
-  Syringe, HeartPulse, Stethoscope, Scissors, 
-  CheckCircle2, AlertTriangle, ArrowRight, RefreshCw, 
-  Square, Droplets, Move
+  Activity, Stethoscope, Microscope, 
+  Layers, Bone, Heart, Search, 
+  Menu, X, Play, Pause, ZoomIn, 
+  Maximize2, ChevronRight, AlertCircle, 
+  Eye, Focus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// --- DATA: Clinical Procedures ---
-const PROCEDURES = {
-  iv: {
-    title: "Peripheral IV Cannulation",
-    icon: Syringe,
-    color: "teal",
-    steps: [
-      { id: 'prep', label: "Aseptic Prep", instruction: "Tap the sterile swab to clean the site in a concentric motion." },
-      { id: 'tourniquet', label: "Apply Tourniquet", instruction: "Drag the tourniquet band onto the upper arm." },
-      { id: 'insert', label: "Venipuncture", instruction: "Drag the needle to the target vein at the correct angle (15-30°)." },
-      { id: 'flash', label: "Flashback Check", instruction: "Blood return observed. Advance catheter slightly." },
-      { id: 'secure', label: "Secure Line", instruction: "Connect tubing and apply dressing." }
-    ]
+// --- CONFIGURATION ---
+const MODULES = [
+  {
+    id: 'cardio',
+    title: 'Hemodynamics', // Shortened for mobile
+    subtitle: 'Valve Isolation',
+    icon: Heart,
+    color: 'rose', 
+    bg: 'bg-slate-950'
   },
-  cpr: {
-    title: "CPR Training",
-    icon: HeartPulse,
-    color: "rose",
-    steps: [] // Handled by Custom Simulator
+  {
+    id: 'anatomy',
+    title: 'Anatomy Lab',
+    subtitle: 'Virtual Dissection',
+    icon: Bone,
+    color: 'amber', 
+    bg: 'bg-stone-100'
   },
-  suture: {
-    title: "Interrupted Suture",
-    icon: Scissors,
-    color: "indigo",
-    steps: [
-      { id: 'load', label: "Load Needle", instruction: "Tap the needle holder to grasp the needle at 2/3 distance." },
-      { id: 'pierce', label: "Tissue Entry", instruction: "Click the skin mark to pierce the wound edge at 90°." },
-      { id: 'throw', label: "Throw Knot", instruction: "Loop the thread twice (Surgeon's knot) and pull tight." },
-      { id: 'cut', label: "Cut Suture", instruction: "Drag scissors to the suture tails to cut." }
-    ]
+  {
+    id: 'pathology',
+    title: 'Pathology',
+    subtitle: 'H&E Analysis',
+    icon: Microscope,
+    color: 'fuchsia', 
+    bg: 'bg-pink-50'
   }
+];
+
+// ------------------------------------------------------------------
+// 1. CARDIOLOGY: Advanced Phonocardiogram (Mobile Optimized)
+// ------------------------------------------------------------------
+const CardioAdvanced = () => {
+  const [activeValve, setActiveValve] = useState(null);
+  
+  const VALVES = [
+    { id: 'aortic', label: 'Aortic', loc: { top: '35%', left: '42%' }, wave: 'stenosis', bpm: 72 },
+    { id: 'pulmonic', label: 'Pulmonic', loc: { top: '35%', left: '58%' }, wave: 'normal', bpm: 70 },
+    { id: 'tricuspid', label: 'Tricuspid', loc: { top: '55%', left: '45%' }, wave: 'regurgitation', bpm: 75 },
+    { id: 'mitral', label: 'Mitral', loc: { top: '55%', left: '60%' }, wave: 'normal', bpm: 71 },
+  ];
+
+  return (
+    <div className="flex flex-col lg:flex-row h-full text-slate-200 overflow-y-auto lg:overflow-hidden">
+      {/* Visualizer Panel */}
+      <div className="flex-1 relative bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-slate-900 lg:border-r border-b lg:border-b-0 border-slate-700 p-4 lg:p-6 flex flex-col items-center justify-center min-h-[400px]">
+        
+        {/* The Heart Map */}
+        <div className="relative w-full max-w-[300px] aspect-[3/4] opacity-90">
+             {/* Abstract Ribcage/Heart Overlay */}
+             <div className="absolute inset-0 border-4 border-slate-700/50 rounded-[3rem] flex items-center justify-center">
+                 <Heart size={180} className="text-rose-900/40 animate-pulse duration-[2000ms]" strokeWidth={0.5} />
+             </div>
+
+             {/* Interactive Valve Nodes */}
+             {VALVES.map(v => (
+                 <button
+                    key={v.id}
+                    onClick={() => setActiveValve(v)}
+                    className={`absolute w-12 h-12 rounded-full border-2 flex items-center justify-center transition-all duration-300 active:scale-95 z-20
+                    ${activeValve?.id === v.id 
+                        ? 'border-rose-400 bg-rose-500/20 shadow-[0_0_20px_rgba(251,113,133,0.5)]' 
+                        : 'border-slate-600 bg-slate-800/80'}`}
+                    style={{ top: v.loc.top, left: v.loc.left }}
+                 >
+                    <div className={`w-3 h-3 rounded-full ${activeValve?.id === v.id ? 'bg-rose-400 animate-ping' : 'bg-slate-500'}`}></div>
+                 </button>
+             ))}
+             
+             <p className="absolute bottom-4 w-full text-center text-xs font-mono text-slate-500">Tap nodes to auscultate</p>
+        </div>
+      </div>
+
+      {/* Data Panel */}
+      <div className="w-full lg:w-96 bg-slate-950 p-6 flex flex-col border-l border-slate-800">
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
+             <div>
+                <h3 className="text-lg font-bold text-white">Monitor</h3>
+                <p className="text-xs text-rose-400 font-mono">LIVE FEED</p>
+             </div>
+             <Activity className="text-rose-500 animate-pulse" />
+          </div>
+
+          {/* Dynamic Waveform Display */}
+          <div className="bg-black border border-slate-800 rounded-xl h-32 lg:h-48 mb-6 relative overflow-hidden flex items-center justify-center">
+             <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_95%,rgba(244,63,94,0.1)_100%)] bg-[length:20px_100%]"></div>
+             {/* Grid */}
+             <div className="absolute inset-0 opacity-20 bg-[linear-gradient(rgba(255,255,255,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.1)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
+
+             {activeValve ? (
+                 <div className="w-full h-full flex items-center">
+                    <svg viewBox="0 0 400 100" className="w-full h-full stroke-rose-400 fill-none stroke-2 drop-shadow-lg">
+                        <motion.path 
+                            d={activeValve.wave === 'normal' 
+                                ? "M0,50 Q20,20 40,50 T80,50 T120,50 Q140,80 160,50 T200,50" 
+                                : "M0,50 Q10,10 20,90 T40,50 T60,50 Q80,20 100,50 T150,50"} 
+                            initial={{ x: -100, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                        />
+                    </svg>
+                 </div>
+             ) : (
+                 <span className="text-xs font-mono text-slate-600">SELECT SOURCE</span>
+             )}
+          </div>
+
+          <div className="space-y-4">
+              <div className="flex justify-between items-center text-sm border-b border-slate-800 pb-2">
+                 <span className="text-slate-400">Location</span>
+                 <span className="font-bold text-white">{activeValve?.label || '--'}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm border-b border-slate-800 pb-2">
+                 <span className="text-slate-400">Heart Rate</span>
+                 <span className="font-bold text-rose-400 font-mono">{activeValve ? `${activeValve.bpm} BPM` : '--'}</span>
+              </div>
+          </div>
+      </div>
+    </div>
+  );
 };
 
-// --- SUB-COMPONENT: CPR Simulator (Metronome Game) ---
-const CPRSimulator = () => {
-  const [active, setActive] = useState(false);
-  const [bpm, setBpm] = useState(0);
-  const [feedback, setFeedback] = useState("Tap to Compress");
-  const lastTap = useRef(0);
+// ------------------------------------------------------------------
+// 2. ANATOMY: Cadaver Dissection (Touch Enabled)
+// ------------------------------------------------------------------
+const CadaverExplorer = () => {
+    const [lensPos, setLensPos] = useState({ x: 150, y: 150 }); // Start center
+    const containerRef = useRef(null);
+  
+    // Unified Handler for Mouse and Touch
+    const handleMove = (e) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      
+      // Check if it's a touch event or mouse event
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
-  const handleCompress = () => {
-    const now = Date.now();
-    if (!active) setActive(true);
-    
-    if (lastTap.current) {
-      const diff = now - lastTap.current;
-      const currentBpm = Math.round(60000 / diff);
-      setBpm(currentBpm);
-
-      if (currentBpm < 100) setFeedback("PUSH FASTER! ⚡");
-      else if (currentBpm > 120) setFeedback("TOO FAST! 🐢");
-      else setFeedback("PERFECT RHYTHM! ✅");
-    }
-    lastTap.current = now;
-  };
-
-  // Reset if inactive
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (Date.now() - lastTap.current > 2000 && active) {
-        setBpm(0);
-        setActive(false);
-        setFeedback("COMPRESSIONS LOST 💀");
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      
+      // Constrain to container
+      if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+          setLensPos({ x, y });
       }
-    }, 500);
-    return () => clearInterval(timer);
-  }, [active]);
+    };
 
-  return (
-    <div className="flex flex-col items-center justify-center h-full py-10">
-        <div className={`w-48 h-48 rounded-full border-8 flex items-center justify-center transition-all duration-100 mb-8 ${bpm >= 100 && bpm <= 120 ? 'border-green-500 bg-green-50 scale-110' : 'border-slate-200'}`}>
-            <div className="text-center">
-                <div className="text-5xl font-black text-slate-800">{bpm}</div>
-                <div className="text-xs font-bold text-slate-400">BPM</div>
-            </div>
-        </div>
-        <button 
-            onMouseDown={handleCompress}
-            className="bg-rose-500 hover:bg-rose-600 active:scale-95 transition-all text-white w-64 py-6 rounded-2xl text-xl font-black shadow-xl shadow-rose-200 flex items-center justify-center gap-2"
+    const ORGANS = [
+        { id: 'heart', x: '50%', y: '35%', label: 'Myocardium' },
+        { id: 'liver', x: '45%', y: '55%', label: 'Hepatic Lobes' },
+        { id: 'intestine', x: '50%', y: '70%', label: 'Small Intestine' }
+    ];
+  
+    return (
+      <div className="flex flex-col lg:flex-row h-full gap-6 p-2 overflow-y-auto">
+        <div 
+          ref={containerRef}
+          onMouseMove={handleMove}
+          onTouchMove={handleMove}
+          className="flex-1 bg-stone-200 rounded-3xl relative overflow-hidden border-4 border-stone-300 shadow-inner cursor-crosshair min-h-[450px] touch-none" // touch-none prevents scrolling while dragging
         >
-            <HeartPulse className={active ? 'animate-ping' : ''}/> COMPRESS
-        </button>
-        <p className="mt-6 font-bold text-slate-500 animate-pulse">{feedback}</p>
-    </div>
-  );
+           {/* LAYER 1: SKIN */}
+           <div className="absolute inset-0 bg-stone-300 flex items-center justify-center pointer-events-none">
+               <div className="w-48 lg:w-64 h-[80%] bg-stone-400/30 rounded-full blur-xl"></div>
+               <div className="absolute text-stone-500 font-serif text-2xl lg:text-4xl opacity-20 font-bold tracking-widest rotate-90 lg:rotate-0">EPIDERMIS</div>
+           </div>
+
+           {/* LAYER 2: ORGANS (Revealed via ClipPath) */}
+           <div 
+              className="absolute inset-0 bg-red-950 flex items-center justify-center pointer-events-none"
+              style={{ 
+                  clipPath: `circle(100px at ${lensPos.x}px ${lensPos.y}px)` 
+              }}
+           >
+               <div className="relative w-full h-full bg-[radial-gradient(circle_at_center,_#7f1d1d_0%,_#450a0a_100%)]">
+                   <div className="absolute inset-0 opacity-30 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')]"></div>
+                   
+                   {ORGANS.map(organ => (
+                       <div key={organ.id} className="absolute flex flex-col items-center gap-2" style={{ left: organ.x, top: organ.y }}>
+                           <div className="w-20 h-20 rounded-full bg-red-800/80 blur-md border border-red-500/50"></div>
+                           <span className="bg-black/60 text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm border border-white/20">
+                               {organ.label}
+                           </span>
+                       </div>
+                   ))}
+               </div>
+           </div>
+
+           {/* Lens UI */}
+           <div 
+             className="absolute w-[200px] h-[200px] rounded-full border-4 border-white/30 shadow-2xl pointer-events-none z-50 flex items-center justify-center"
+             style={{ left: lensPos.x, top: lensPos.y, transform: 'translate(-50%, -50%)' }}
+           >
+               <div className="w-full h-px bg-white/20 absolute"></div>
+               <div className="h-full w-px bg-white/20 absolute"></div>
+               <div className="absolute -top-6 text-[10px] text-stone-500 font-bold bg-white/80 px-2 py-1 rounded">DRAG TO DISSECT</div>
+           </div>
+        </div>
+  
+        {/* Mobile Info Panel */}
+        <div className="w-full lg:w-72 flex flex-col justify-center gap-4 pb-4">
+           <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-xl">
+              <h3 className="text-xl font-bold text-stone-800 mb-2 font-serif flex items-center gap-2">
+                  <Bone size={20}/> Deep Dissection
+              </h3>
+              <p className="text-sm text-stone-500 mb-4 leading-relaxed">
+                Drag the lens over the cavity to reveal deep structures.
+              </p>
+              
+              <div className="bg-stone-100 p-3 rounded-lg border border-stone-200">
+                  <div className="flex flex-wrap gap-2">
+                      <span className="px-2 py-1 bg-white text-stone-600 text-[10px] font-bold rounded border border-stone-200">Muscular</span>
+                      <span className="px-2 py-1 bg-white text-stone-600 text-[10px] font-bold rounded border border-stone-200">Digestive</span>
+                  </div>
+              </div>
+           </div>
+        </div>
+      </div>
+    );
 };
 
-// --- SUB-COMPONENT: Procedure Engine (IV & Suture) ---
-const ProcedureEngine = ({ skillKey, onComplete, onExit }) => {
-  const procedure = PROCEDURES[skillKey];
-  const [step, setStep] = useState(0);
-  const [feedback, setFeedback] = useState(null);
-  
-  // Interaction States
-  const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
-  const [completedActions, setCompletedActions] = useState({});
+// ------------------------------------------------------------------
+// 3. PATHOLOGY: Digital Microscope (Mobile Responsive)
+// ------------------------------------------------------------------
+const PathologyScope = () => {
+    const [focus, setFocus] = useState(50); 
+    const [zoom, setZoom] = useState(1); 
 
-  const currentStepData = procedure.steps[step];
+    const blurAmount = Math.abs(focus - 50) / 5;
 
-  const handleNext = () => {
-    setFeedback({ success: true, msg: "Step Complete!" });
-    setTimeout(() => {
-        setFeedback(null);
-        if (step < procedure.steps.length - 1) {
-            setStep(s => s + 1);
-            setDragPosition({ x: 0, y: 0 }); // Reset drag
-        } else {
-            onComplete();
-        }
-    }, 1000);
-  };
-
-  // --- SIMULATION LOGIC ---
-  
-  // 1. IV SIMULATION
-  const renderIVSim = () => {
-    const stepId = currentStepData.id;
-
-    if (stepId === 'prep') {
-        return (
-            <div className="relative w-64 h-64 bg-orange-100 rounded-full mx-auto border-4 border-orange-200 overflow-hidden cursor-crosshair" onClick={handleNext}>
-                <div className="absolute inset-0 flex items-center justify-center opacity-20 text-orange-300 font-bold text-4xl">SKIN</div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-64 bg-blue-200/50 rotate-45 blur-sm"></div>
-                <motion.div 
-                    initial={{ scale: 0 }} animate={{ scale: 1 }}
-                    className="absolute top-10 right-10 bg-white p-2 rounded-full shadow-lg cursor-pointer animate-bounce"
+    return (
+        <div className="flex flex-col lg:flex-row h-full gap-4 overflow-y-auto">
+            {/* Microscope Viewport */}
+            <div className="w-full aspect-square lg:flex-1 max-h-[500px] bg-black rounded-[2rem] lg:rounded-full mx-auto relative overflow-hidden border-[8px] lg:border-[16px] border-slate-800 shadow-2xl flex-shrink-0">
+                <div 
+                    className="absolute inset-0 bg-pink-100 cursor-move"
+                    style={{
+                        backgroundImage: `
+                            radial-gradient(circle at 20% 30%, rgba(200, 50, 200, 0.4) 0%, transparent 20%), 
+                            radial-gradient(circle at 70% 60%, rgba(150, 0, 150, 0.5) 0%, transparent 30%),
+                            repeating-linear-gradient(45deg, rgba(255,0,0,0.05) 0px, rgba(255,0,0,0.05) 2px, transparent 2px, transparent 10px)
+                        `,
+                        backgroundSize: '200% 200%',
+                        filter: `blur(${blurAmount}px)`,
+                        transform: `scale(${zoom})`,
+                        transition: 'transform 0.2s ease-out, filter 0.2s ease-out'
+                    }}
                 >
-                    <Droplets className="text-teal-500"/>
-                </motion.div>
-                <p className="absolute bottom-4 w-full text-center text-xs font-bold text-slate-500">Click sterile swab to clean</p>
-            </div>
-        );
-    }
-    if (stepId === 'tourniquet') {
-        return (
-            <div className="relative w-full h-48 bg-orange-50 rounded-xl border-2 border-slate-200 flex items-center justify-center overflow-hidden">
-                <div className="w-32 h-full bg-orange-200 flex flex-col items-center justify-center relative">
-                    <span className="text-orange-400 font-bold rotate-90 absolute">UPPER ARM</span>
-                    {/* Drop Zone */}
-                    <div className="w-full h-4 border-2 border-dashed border-slate-400 bg-slate-100/50 absolute top-10"></div>
+                    {/* Cells */}
+                    <div className="absolute top-[30%] left-[40%] w-12 h-12 bg-purple-800/40 rounded-full blur-[1px]"></div>
+                    <div className="absolute top-[32%] left-[42%] w-4 h-4 bg-purple-900 rounded-full"></div> 
+                    <div className="absolute bottom-[20%] left-[20%] w-20 h-20 bg-purple-900/60 rounded-[30%_70%_70%_30%] animate-pulse"></div>
                 </div>
-                {/* Draggable Band */}
-                <motion.div 
-                    drag dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                    dragElastic={0.2}
-                    onDragEnd={(e, info) => { if(info.offset.x < -50) handleNext(); }}
-                    className="absolute right-10 top-1/2 -translate-y-1/2 w-12 h-64 bg-blue-600 cursor-grab active:cursor-grabbing rounded shadow-xl flex items-center justify-center text-white font-bold writing-vertical"
-                >
-                    <Move size={16} className="mb-2"/> DRAG ME
-                </motion.div>
-            </div>
-        );
-    }
-    if (stepId === 'insert') {
-        return (
-            <div className="relative w-full h-64 bg-orange-50 rounded-xl border-2 border-slate-200 overflow-hidden">
-                <div className="absolute top-1/2 left-0 w-full h-8 bg-blue-200/50 blur-sm -rotate-3 transform origin-left"></div>
-                <div className="absolute top-1/2 left-1/2 w-4 h-4 bg-red-500/20 rounded-full -translate-x-1/2 -translate-y-1/2 animate-ping"></div>
-                
-                <motion.div 
-                    drag 
-                    onDragEnd={(e, info) => { if(info.point.y > 100) handleNext(); }}
-                    className="absolute top-10 left-1/2 -translate-x-1/2 cursor-grab active:cursor-grabbing"
-                >
-                    <Syringe size={64} className="text-slate-600 rotate-[135deg] drop-shadow-xl"/>
-                </motion.div>
-                <p className="absolute bottom-2 w-full text-center text-xs text-slate-400">Drag syringe to vein target</p>
-            </div>
-        );
-    }
-    return <button onClick={handleNext} className="w-full py-4 bg-slate-800 text-white rounded-xl font-bold">Perform Action</button>;
-  };
 
-  // 2. SUTURE SIMULATION
-  const renderSutureSim = () => {
-    const stepId = currentStepData.id;
-
-    if (stepId === 'load') {
-        return (
-            <div className="flex items-center justify-center h-64 gap-8">
-                <div className="w-2 h-32 bg-slate-300 rounded-full relative">
-                    <div className="absolute -left-2 top-0 w-6 h-6 border-2 border-slate-400 rounded-full"></div> {/* Needle eye */}
-                </div>
-                <motion.button 
-                    whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                    onClick={handleNext}
-                    className="p-4 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 hover:border-indigo-500 hover:bg-indigo-50 transition-all group"
-                >
-                    <Scissors className="text-slate-400 group-hover:text-indigo-600" size={32} />
-                    <span className="text-xs font-bold block mt-2 text-slate-500">Click to Grasp</span>
-                </motion.button>
-            </div>
-        );
-    }
-    if (stepId === 'pierce') {
-        return (
-            <div className="relative w-full h-64 bg-rose-50 rounded-xl border border-rose-100 flex items-center justify-center cursor-crosshair" onClick={handleNext}>
-                {/* Wound */}
-                <div className="w-64 h-2 bg-red-800 rounded-full relative overflow-visible">
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 w-4 h-4 border-2 border-dashed border-indigo-500 rounded-full animate-ping"></div>
-                </div>
-                <p className="absolute bottom-4 text-xs font-bold text-rose-400">Click target to insert needle</p>
-            </div>
-        );
-    }
-    if (stepId === 'throw') {
-        return (
-            <div className="flex flex-col items-center justify-center h-64">
-                <motion.div 
-                    animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                    className="w-32 h-32 border-4 border-indigo-200 border-t-indigo-600 rounded-full flex items-center justify-center cursor-pointer"
-                    onClick={handleNext}
-                >
-                    <span className="font-bold text-indigo-600">CLICK TO TIE</span>
-                </motion.div>
-            </div>
-        );
-    }
-    return <button onClick={handleNext} className="w-full py-4 bg-slate-800 text-white rounded-xl font-bold">Complete Step</button>;
-  };
-
-  return (
-    <div className="flex gap-6 h-full">
-        {/* Left: Guide */}
-        <div className="w-1/3 bg-white border border-slate-200 p-6 rounded-3xl flex flex-col relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-slate-100">
-                <div className="h-full bg-teal-500 transition-all duration-500" style={{ width: `${((step + 1) / procedure.steps.length) * 100}%` }}></div>
-            </div>
-            
-            <div className="mt-4 mb-auto">
-                <h3 className="text-2xl font-black text-slate-800 leading-tight mb-2">{currentStepData.label}</h3>
-                <p className="text-slate-500 font-medium">{currentStepData.instruction}</p>
+                {/* Eyepiece Grid */}
+                <div className="absolute inset-0 pointer-events-none opacity-30 bg-[size:50px_50px] bg-[linear-gradient(rgba(0,0,0,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.5)_1px,transparent_1px)]"></div>
+                <div className="absolute inset-0 pointer-events-none border-[20px] lg:border-[50px] border-black/20 rounded-[2rem] lg:rounded-full"></div>
             </div>
 
-            <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-400">
-                <p className="font-bold uppercase mb-1">Tip:</p>
-                Follow the visual cues on the right panel.
-            </div>
-
-            {/* Feedback Overlay */}
-            <AnimatePresence>
-                {feedback && (
-                    <motion.div 
-                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                        className="absolute inset-0 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 z-10"
-                    >
-                        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4 shadow-sm">
-                            <CheckCircle2 size={32}/>
-                        </div>
-                        <h4 className="text-xl font-bold text-slate-800">{feedback.msg}</h4>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
-
-        {/* Right: Interactive Sim */}
-        <div className="flex-1 bg-slate-50 border border-slate-200 rounded-3xl p-8 flex flex-col justify-center relative shadow-inner">
-            {skillKey === 'iv' && renderIVSim()}
-            {skillKey === 'suture' && renderSutureSim()}
-        </div>
-    </div>
-  );
-};
-
-// --- MAIN PAGE ---
-export default function SkillsPage() {
-  const [selectedSkill, setSelectedSkill] = useState(null);
-
-  return (
-    <div className="max-w-6xl mx-auto p-4 md:p-8 pb-24 h-[calc(100vh-64px)]">
-      {!selectedSkill ? (
-        <div className="flex flex-col h-full">
-            <div className="mb-8">
-                <h2 className="text-3xl font-bold text-slate-900">Clinical Skills Lab</h2>
-                <p className="text-slate-500">Select a module to begin interactive training.</p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {Object.entries(PROCEDURES).map(([key, skill]) => {
-                    const Icon = skill.icon;
-                    return (
-                        <button 
-                            key={key} 
-                            onClick={() => setSelectedSkill(key)}
-                            className="group relative bg-white border border-slate-200 p-8 rounded-[2.5rem] hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-left overflow-hidden flex flex-col items-start h-64 justify-between"
-                        >
-                            <div className={`absolute top-0 right-0 w-40 h-40 bg-${skill.color}-50 rounded-bl-[100px] -mr-8 -mt-8 transition-transform group-hover:scale-150 z-0`}></div>
-                            <div className={`relative z-10 w-14 h-14 rounded-2xl bg-${skill.color}-100 flex items-center justify-center text-${skill.color}-600 shadow-sm group-hover:scale-110 transition-transform`}>
-                                <Icon size={28} />
-                            </div>
-                            <div className="relative z-10 mt-4">
-                                <h3 className="font-bold text-xl text-slate-900 mb-1">{skill.title}</h3>
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                                    {key === 'cpr' ? 'Rhythm Trainer' : `${PROCEDURES[key].steps.length} Steps`}
-                                </p>
-                            </div>
-                            <div className="relative z-10 w-full flex justify-between items-center pt-4 border-t border-slate-100 mt-2">
-                                <span className="text-xs font-bold text-slate-400 group-hover:text-slate-800 transition-colors">Start Module</span>
-                                <div className="bg-slate-50 p-2 rounded-full group-hover:bg-slate-900 group-hover:text-white transition-colors">
-                                    <ArrowRight size={16}/>
-                                </div>
-                            </div>
-                        </button>
-                    )
-                })}
-            </div>
-        </div>
-      ) : (
-        <div className="h-full flex flex-col">
-            <button onClick={() => setSelectedSkill(null)} className="self-start mb-4 flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors px-4 py-2 rounded-xl hover:bg-white">
-                <ArrowRight className="rotate-180" size={16}/> Back to Lab
-            </button>
-            
-            <div className="flex-1 bg-white rounded-[3rem] shadow-2xl border border-slate-200 overflow-hidden p-2">
-                {selectedSkill === 'cpr' ? (
-                    <CPRSimulator />
-                ) : (
-                    // 🧠 CRASH FIX: key={selectedSkill} ensures fresh mount on change
-                    <ProcedureEngine 
-                        key={selectedSkill} 
-                        skillKey={selectedSkill} 
-                        onComplete={() => alert('Procedure Mastered!')}
-                        onExit={() => setSelectedSkill(null)}
+            {/* Controls */}
+            <div className="w-full lg:w-64 bg-slate-50 lg:border-l border-slate-200 p-6 flex flex-col justify-center gap-6 lg:gap-8 rounded-t-3xl lg:rounded-none shadow-top lg:shadow-none">
+                <div>
+                    <h3 className="text-slate-800 font-bold flex items-center gap-2 mb-2 text-sm"><Focus size={16}/> Coarse Focus</h3>
+                    <input 
+                        type="range" min="0" max="100" 
+                        value={focus} 
+                        onChange={(e) => setFocus(parseInt(e.target.value))}
+                        className="w-full accent-fuchsia-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                     />
-                )}
+                </div>
+
+                <div>
+                    <h3 className="text-slate-800 font-bold flex items-center gap-2 mb-2 text-sm"><ZoomIn size={16}/> Objective Zoom</h3>
+                    <div className="flex gap-2">
+                        {[1, 2, 4].map(z => (
+                            <button 
+                                key={z}
+                                onClick={() => setZoom(z)}
+                                className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all border ${zoom === z ? 'bg-fuchsia-600 text-white border-fuchsia-600 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-fuchsia-50'}`}
+                            >
+                                {z * 10}x
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="bg-pink-100 p-4 rounded-xl border border-pink-200">
+                    <div className="text-xs font-bold text-pink-700 uppercase mb-1">Slide #4092</div>
+                    <p className="text-xs text-pink-600 mt-1">Task: Identify Reed-Sternberg cells.</p>
+                </div>
             </div>
         </div>
-      )}
+    );
+};
+
+// ------------------------------------------------------------------
+// MAIN LAYOUT
+// ------------------------------------------------------------------
+export default function ClinicalSkillsLab() {
+  const [activeModuleId, setActiveModuleId] = useState(null);
+  const activeModule = MODULES.find(m => m.id === activeModuleId);
+
+  return (
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)] bg-slate-100 overflow-hidden font-sans">
+      
+      {/* 1. RESPONSIVE NAVIGATION */}
+      {/* Desktop: Sidebar | Mobile: Top Scroll Bar */}
+      <div className="w-full lg:w-80 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col z-20 shadow-md lg:shadow-xl flex-shrink-0">
+         {/* Brand Header (Hidden on small mobile if active module to save space? kept for now) */}
+         <div className="p-4 lg:p-6 border-b border-slate-100 flex justify-between items-center">
+            <div>
+                <h2 className="text-lg lg:text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <Layers className="text-indigo-600" size={20}/> MedLab<span className="text-slate-400 font-light">OS</span>
+                </h2>
+                <p className="text-[10px] text-slate-400 mt-0.5 font-bold uppercase tracking-wider hidden lg:block">Simulation Suite v3.0</p>
+            </div>
+         </div>
+
+         {/* Nav List */}
+         <div className="flex lg:flex-col overflow-x-auto lg:overflow-y-auto p-2 lg:p-4 gap-2 lg:gap-3 hide-scrollbar">
+            {MODULES.map((module) => {
+               const Icon = module.icon;
+               const isActive = activeModuleId === module.id;
+               return (
+                  <button
+                    key={module.id}
+                    onClick={() => setActiveModuleId(module.id)}
+                    className={`flex-shrink-0 lg:w-full text-left p-3 lg:p-4 rounded-xl transition-all duration-300 border relative overflow-hidden flex items-center lg:items-start gap-3 lg:block
+                      ${isActive 
+                        ? `${module.bg} border-transparent shadow-lg scale-[0.98] lg:scale-[1.02]` 
+                        : 'bg-white text-slate-600 border-slate-100 hover:border-slate-300'
+                      }`}
+                  >
+                     <div className={`p-2 rounded-lg ${isActive ? 'bg-white/20 text-current' : `bg-slate-50 text-${module.color}-500`}`}>
+                        <Icon size={20} />
+                     </div>
+                     <div className="relative z-10">
+                        <h3 className={`font-bold text-sm whitespace-nowrap ${isActive ? 'text-current' : 'text-slate-800'}`}>{module.title}</h3>
+                        <p className={`text-xs mt-0.5 hidden lg:block ${isActive ? 'opacity-80' : 'text-slate-400'}`}>{module.subtitle}</p>
+                     </div>
+                  </button>
+               )
+            })}
+         </div>
+      </div>
+
+      {/* 2. MAIN STAGE */}
+      <div className="flex-1 bg-slate-50 relative overflow-hidden flex flex-col">
+         {activeModule ? (
+             <div className="flex-1 flex flex-col h-full animate-in fade-in duration-300">
+                {/* Mobile Header Overlay */}
+                <div className="flex justify-between items-center p-4 bg-white border-b border-slate-200 lg:hidden">
+                   <h1 className="text-sm font-bold text-slate-900">{activeModule.title}</h1>
+                   <button onClick={() => setActiveModuleId(null)} className="p-1 bg-slate-100 rounded-full"><X size={18}/></button>
+                </div>
+
+                {/* Desktop Header */}
+                <header className="hidden lg:flex justify-between items-center mb-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm m-6 mb-0">
+                   <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg bg-${activeModule.color}-100 text-${activeModule.color}-600`}>
+                          <activeModule.icon size={20} />
+                      </div>
+                      <div>
+                          <h1 className="text-lg font-bold text-slate-900 leading-none">{activeModule.title}</h1>
+                          <span className="text-[10px] font-mono text-slate-400">ACTIVE SESSION</span>
+                      </div>
+                   </div>
+                   <button onClick={() => setActiveModuleId(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"><X size={20}/></button>
+                </header>
+
+                {/* Workspace Container */}
+                <div className="flex-1 lg:p-6 p-2 overflow-hidden">
+                    <div className="w-full h-full bg-white lg:rounded-[2rem] rounded-xl shadow-xl border border-slate-200 overflow-hidden relative">
+                        {activeModuleId === 'cardio' && <CardioAdvanced />}
+                        {activeModuleId === 'anatomy' && <CadaverExplorer />}
+                        {activeModuleId === 'pathology' && <PathologyScope />}
+                    </div>
+                </div>
+             </div>
+         ) : (
+            /* Dashboard Empty State */
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
+               <div className="w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-[2rem] flex items-center justify-center shadow-xl mb-6 rotate-3 border border-slate-100">
+                  <Activity size={40} className="text-indigo-600"/>
+               </div>
+               <h2 className="text-2xl lg:text-3xl font-black text-slate-900 mb-3 tracking-tight">Select Simulation</h2>
+               <p className="text-slate-500 max-w-sm mx-auto mb-8 font-medium text-sm lg:text-base">
+                  Launch a high-fidelity virtual module from the menu to practice diagnostic skills.
+               </p>
+            </div>
+         )}
+      </div>
     </div>
   );
 }
