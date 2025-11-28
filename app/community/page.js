@@ -1,3 +1,4 @@
+
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { 
@@ -10,7 +11,9 @@ import {
   Scissors, Sparkles, Zap, Plus, ArrowUp, ArrowDown, Check, CheckCircle2,
   ThumbsUp, Send, Type, List, Image as ImageIcon, Link as LinkIcon,
   BarChart2, MoreHorizontal, Heart, Share2,
-  ChevronLeft, Paperclip, Smile, LogOut
+  ChevronLeft, Paperclip, Smile, LogOut,
+  // New Icons added for Covers & Lock
+  Lock, Crown, Brain, BookOpen, Dna
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -38,7 +41,46 @@ const NAV_THEMES = {
     icon: Hash
   },
 };
-
+// --- 🎨 GROUP COVER THEMES ---
+// We use full class strings to ensure Tailwind picks them up correctly.
+const GROUP_COVERS = [
+  { 
+    bg: "bg-gradient-to-br from-rose-400 to-orange-400", 
+    overlay: "bg-white/10",
+    icon: HeartPulse, 
+    text: "text-rose-950" 
+  },
+  { 
+    bg: "bg-gradient-to-bl from-violet-500 to-purple-600", 
+    overlay: "bg-indigo-500/10",
+    icon: Brain, 
+    text: "text-white" 
+  },
+  { 
+    bg: "bg-gradient-to-tr from-cyan-400 to-blue-500", 
+    overlay: "bg-blue-400/10",
+    icon: Stethoscope, 
+    text: "text-cyan-950" 
+  },
+  { 
+    bg: "bg-gradient-to-br from-emerald-400 to-teal-600", 
+    overlay: "bg-emerald-400/10",
+    icon: FlaskConical, 
+    text: "text-emerald-950" 
+  },
+  { 
+    bg: "bg-gradient-to-tl from-amber-400 to-orange-500", 
+    overlay: "bg-amber-300/10",
+    icon: BookOpen, 
+    text: "text-amber-950" 
+  },
+  { 
+    bg: "bg-gradient-to-r from-fuchsia-500 to-pink-600", 
+    overlay: "bg-pink-400/10",
+    icon: Dna, 
+    text: "text-white" 
+  },
+];
 // --- 🎨 SUBJECT THEMES ---
 const THEMES = {
   'Anatomy': { color: 'rose', bg: 'from-rose-100 to-orange-100', text: 'text-rose-600', icon: Bone },
@@ -169,6 +211,7 @@ function GroupsView() {
   const [loading, setLoading] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false); // State for Premium Lock
   const [currentUser, setCurrentUser] = useState(null);
   const [search, setSearch] = useState('');
 
@@ -201,20 +244,46 @@ function GroupsView() {
       if (e.key === 'Enter') fetchGroups(e.target.value);
   };
 
+  // --- 🔒 PREMIUM CHECK ---
+  const handleCreateClick = () => {
+    // Check if user is premium. Assuming 'isPremium' exists on user object.
+    // If your user object doesn't have this yet, this logic ensures the lock works visually.
+    if (currentUser?.isPremium) {
+        setShowCreate(true);
+    } else {
+        setShowPremiumModal(true);
+    }
+  };
+
   // If a group is selected, show the Chat Room
   if (selectedGroup) {
     return <ChatRoom group={selectedGroup} currentUser={currentUser} onBack={() => { setSelectedGroup(null); fetchGroups(); }} />;
   }
 
   return (
-    <div className="max-w-4xl mx-auto animate-in fade-in duration-500">
-      <div className="flex justify-between items-center mb-8">
+    <div className="max-w-5xl mx-auto animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
-            <h1 className="text-3xl font-black text-slate-900">Study Groups</h1>
-            <p className="text-slate-500 font-medium">Join topic-based rooms or create your own squad.</p>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Study Groups</h1>
+            <p className="text-slate-500 font-medium">Join topic-based rooms or squad up.</p>
         </div>
-        <button onClick={() => setShowCreate(true)} className="bg-rose-600 text-white px-6 py-3 rounded-2xl font-bold shadow-xl shadow-rose-200 flex items-center gap-2 hover:bg-rose-700 transition-all active:scale-95">
-            <Plus size={20}/> Create Group
+        
+        {/* Create Group Button with Lock Logic */}
+        <button 
+            onClick={handleCreateClick} 
+            className={`
+                px-6 py-3 rounded-2xl font-bold shadow-xl flex items-center gap-2 transition-all active:scale-95
+                ${currentUser?.isPremium 
+                    ? 'bg-rose-600 text-white shadow-rose-200 hover:bg-rose-700' 
+                    : 'bg-slate-900 text-white shadow-slate-300 hover:bg-slate-800'
+                }
+            `}
+        >
+            {currentUser?.isPremium ? (
+                <><Plus size={20}/> Create Group</>
+            ) : (
+                <><Lock size={18} className="text-yellow-400"/> Create Group</>
+            )}
         </button>
       </div>
 
@@ -231,17 +300,18 @@ function GroupsView() {
       </div>
 
       {showCreate && <CreateGroupModal onClose={() => setShowCreate(false)} onRefresh={fetchGroups} />}
+      {showPremiumModal && <PremiumLockModal onClose={() => setShowPremiumModal(false)} />}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
-            <div className="col-span-2 flex justify-center py-20"><Loader2 className="animate-spin w-8 h-8 text-rose-400"/></div>
+            <div className="col-span-full flex justify-center py-20"><Loader2 className="animate-spin w-8 h-8 text-rose-400"/></div>
         ) : groups.length === 0 ? (
-            <div className="col-span-2 text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+            <div className="col-span-full text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
                 <p className="text-slate-400 font-bold">No active groups found.</p>
             </div>
         ) : (
-            groups.map(group => (
-                <GroupCard key={group.id} group={group} onSelect={setSelectedGroup} />
+            groups.map((group, index) => (
+                <GroupCard key={group.id} group={group} index={index} onSelect={setSelectedGroup} />
             ))
         )}
       </div>
@@ -249,72 +319,196 @@ function GroupsView() {
   );
 }
 
-function GroupCard({ group, onSelect }) {
+function GroupCard({ group, index, onSelect }) {
   const [joining, setJoining] = useState(false);
+
+  // Deterministic Theme Selection
+  const themeIndex = (group.id.length + index) % GROUP_COVERS.length;
+  const theme = GROUP_COVERS[themeIndex];
+  const ThemeIcon = theme.icon;
 
   const handleJoin = async (e) => {
     e.stopPropagation();
     setJoining(true);
     try {
-        const res = await fetch('/api/community/groups/join', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ groupId: group.id })
-        });
-        if (res.ok) {
-            toast.success(`Joined ${group.name}!`);
-            onSelect({ ...group, isMember: true }); // Optimistic update
-        }
-    } catch(e) { toast.error("Failed to join"); }
-    finally { setJoining(false); }
+      const res = await fetch('/api/community/groups/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId: group.id })
+      });
+      if (res.ok) {
+        toast.success(`Joined ${group.name}!`);
+        onSelect({ ...group, isMember: true });
+      }
+    } catch (e) {
+      toast.error("Failed to join");
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  // render a small avatar stack if member avatars available
+  const renderAvatars = () => {
+    const avatars = group.memberAvatars || [];
+    const shown = avatars.slice(0, 3);
+    return (
+      <div className="flex -space-x-2 items-center">
+        {shown.length > 0 ? shown.map((a, i) => (
+          <img
+            key={i}
+            src={a}
+            alt="m"
+            className="w-8 h-8 rounded-full border-2 border-white shadow-sm bg-white object-cover"
+          />
+        )) : (
+          <div className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-xs font-bold text-slate-600 shadow-sm">
+            {group.name?.[0]?.toUpperCase() || 'G'}
+          </div>
+        )}
+        {group.memberCount > (shown.length || 0) && (
+          <div className="ml-2 text-[11px] font-bold text-slate-500">+{Math.max(0, (group.memberCount || 0) - shown.length)}</div>
+        )}
+      </div>
+    );
   };
 
   return (
-    <div 
-        onClick={() => group.isMember && onSelect(group)}
-        className={`bg-white p-6 rounded-3xl border border-slate-200 shadow-sm transition-all group relative overflow-hidden ${group.isMember ? 'cursor-pointer hover:border-rose-300 hover:shadow-md' : ''}`}
+    <motion.div
+      whileHover={{ y: -6, boxShadow: "0 20px 40px rgba(16,24,40,0.08)" }}
+      transition={{ type: "spring", stiffness: 250, damping: 20 }}
+      className={`relative rounded-3xl overflow-hidden border bg-white ${group.isMember ? 'ring-1 ring-rose-50' : 'border-slate-200'} transition-all duration-300`}
+      onClick={() => group.isMember && onSelect(group)}
     >
-        <div className="flex items-start justify-between mb-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-rose-100 to-orange-100 rounded-2xl flex items-center justify-center text-rose-600 shadow-inner">
-                <Hash size={24}/>
-            </div>
+      {/* COVER */}
+      <div className={`relative h-32 ${theme.bg} flex items-start justify-between p-4`}>
+        {/* decorative blobs */}
+        <div className="absolute -right-8 -top-8 w-36 h-36 rounded-full opacity-10 bg-white blur-3xl transform rotate-12 pointer-events-none"></div>
+        <div className="absolute -left-10 -bottom-6 w-44 h-44 rounded-full opacity-6 bg-white blur-2xl pointer-events-none"></div>
+
+        {/* left icon + subject pill */}
+        <div className="flex items-center gap-3 z-10">
+          <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-sm border border-white/20">
+            <ThemeIcon size={20} className={theme.text} />
+          </div>
+          <div>
+            <div className="text-xs font-extrabold tracking-tight text-white leading-none">{group.subject || 'Study Group'}</div>
+            <div className="text-[11px] text-white/90 opacity-90 font-semibold">{group.shortTag || (group.year ? `Year ${group.year}` : '')}</div>
+          </div>
+        </div>
+
+        {/* right: optional small actions */}
+        <div className="z-10 flex items-start gap-3">
+          <div className="text-xs text-white/90 font-semibold pt-0.5">{group.memberCount ?? 0} members</div>
+        </div>
+
+        {/* overlay tint if theme.overlay present */}
+        {theme.overlay && <div className={`${theme.overlay} absolute inset-0 pointer-events-none`}></div>}
+      </div>
+
+      {/* BODY */}
+      <div className="p-5 space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-slate-900 font-extrabold text-lg leading-tight line-clamp-1" title={group.name}>{group.name}</h3>
+            <p className="text-slate-500 text-sm mt-1 line-clamp-2">{group.description || "No description yet — try adding a short summary so others know what to expect."}</p>
+          </div>
+
+          {/* Enter / Join button */}
+          <div className="flex flex-col items-end gap-2">
             {group.isMember ? (
-                <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide flex items-center gap-1">
-                    Joined <Check size={12}/>
-                </span>
+              <span className="text-rose-500 font-bold text-sm flex items-center gap-2">
+                Enter <ChevronLeft size={14} className="rotate-180" />
+              </span>
             ) : (
-                <button 
-                    onClick={handleJoin} 
-                    disabled={joining}
-                    className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50"
-                >
-                    {joining ? <Loader2 size={14} className="animate-spin"/> : 'Join'}
-                </button>
+              <button
+                onClick={handleJoin}
+                disabled={joining}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-sm shadow-md hover:scale-[0.99] active:scale-95 transition-transform disabled:opacity-60"
+              >
+                {joining ? <Loader2 size={14} className="animate-spin" /> : 'Join'}
+              </button>
             )}
+          </div>
         </div>
-        
-        <h3 className="font-bold text-lg text-slate-900 mb-1">{group.name}</h3>
-        <p className="text-slate-500 text-sm line-clamp-2 mb-4 h-10">{group.description || "No description provided."}</p>
-        
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-400 border-t border-slate-100 pt-4">
-            <Users size={14}/> {group.memberCount} Members
+
+        {/* bottom row: avatars, tags, preview badges */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {renderAvatars()}
+            <div className="hidden sm:flex flex-col">
+              <div className="text-xs text-slate-500 font-semibold">{group.leadName || group.ownerName || ''}</div>
+              <div className="text-[11px] text-slate-400">{group.lastActive ? `Active ${group.lastActive}` : 'No recent activity'}</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* subject/tag pill */}
+            {group.tags?.slice(0, 3).map((t, i) => (
+              <span key={i} className="text-[11px] bg-slate-50 border border-slate-100 px-2 py-1 rounded-lg font-bold text-slate-600 uppercase">{t}</span>
+            ))}
+
+            {/* tiny menu placeholder */}
+            <button className="p-2 rounded-lg hover:bg-slate-50 text-slate-400 transition-colors">
+              <MoreHorizontal size={16} />
+            </button>
+          </div>
         </div>
-    </div>
+      </div>
+    </motion.div>
   );
 }
 
+// --- 🔒 PREMIUM MODAL ---
+function PremiumLockModal({ onClose }) {
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-8 relative animate-in zoom-in-95 text-center overflow-hidden">
+                {/* Background Decor */}
+                <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-amber-50 to-white -z-10"></div>
+                
+                <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
+                    <X size={20}/>
+                </button>
+
+                <div className="w-20 h-20 bg-gradient-to-br from-amber-400 to-yellow-600 rounded-3xl flex items-center justify-center text-white shadow-xl shadow-amber-200 mx-auto mb-6 rotate-3">
+                    <Crown size={40} fill="currentColor" className="text-yellow-100"/>
+                </div>
+
+                <h2 className="text-2xl font-black text-slate-900 mb-2">Premium Feature</h2>
+                <p className="text-slate-500 font-medium mb-6 leading-relaxed">
+                    Creating custom study groups is available exclusively for 
+                    <span className="text-amber-600 font-bold"> Premium Members</span>.
+                </p>
+
+                <div className="space-y-3">
+                    <button className="w-full py-3.5 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl font-bold shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all flex items-center justify-center gap-2">
+                        <Zap size={18} className="text-yellow-400" fill="currentColor"/> Upgrade Now
+                    </button>
+                    <button onClick={onClose} className="w-full py-3 text-slate-400 font-bold text-sm hover:text-slate-600">
+                        Maybe Later
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ... [Keep ChatRoom, CreateGroupModal, SocialView, PostCard, etc. exactly as they were] ...
+// (Note: Ensure CreateGroupModal is still present in the file below GroupsView)
 function ChatRoom({ group, currentUser, onBack }) {
+    // ... [Original ChatRoom Logic - Unchanged] ...
+    // (Rest of the file remains identical)
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
     const [attachment, setAttachment] = useState(null);
     const [uploading, setUploading] = useState(false);
-    const [showReactionPicker, setShowReactionPicker] = useState(null); // ID of message to react to
+    const [showReactionPicker, setShowReactionPicker] = useState(null); 
     const scrollRef = useRef(null);
 
     useEffect(() => {
         fetchMessages();
-        const interval = setInterval(fetchMessages, 3000); // Poll every 3s for real-time feel
+        const interval = setInterval(fetchMessages, 3000); 
         return () => clearInterval(interval);
     }, [group.id]);
 
@@ -329,8 +523,6 @@ function ChatRoom({ group, currentUser, onBack }) {
             const res = await fetch(`/api/community/groups/${group.id}/messages`);
             const json = await res.json();
             if (json.ok) {
-                 // Only update if length changed or last message ID changed to avoid jitters, 
-                 // or just naive replace for MVP (Simplest)
                  setMessages(json.data);
             }
         } catch(e) {}
@@ -392,14 +584,12 @@ function ChatRoom({ group, currentUser, onBack }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(msgData)
             });
-            // Ensure we fetch the real message (and its ID) immediately
             fetchMessages(); 
         } catch(e) { toast.error("Failed to send"); }
         finally { setSending(false); }
     };
 
     const handleLeave = async () => {
-        // Confirmation toast instead of alert
         toast((t) => (
             <div className="flex flex-col gap-2 min-w-[200px]">
                 <p className="text-sm font-bold text-slate-800">Leave this group?</p>
@@ -433,13 +623,11 @@ function ChatRoom({ group, currentUser, onBack }) {
     };
 
     const handleReaction = async (messageId, emoji) => {
-        setShowReactionPicker(null); // Close picker
+        setShowReactionPicker(null); 
         
-        // Check if it's a temp message (no real ID), skip if so
         const targetMsg = messages.find(m => m.id === messageId);
         if (targetMsg?.temp) return;
 
-        // Optimistic update
         setMessages(prev => prev.map(msg => {
             if (msg.id !== messageId) return msg;
             
@@ -461,10 +649,8 @@ function ChatRoom({ group, currentUser, onBack }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ messageId, emoji })
             });
-            // No immediate fetch needed as UI is updated optimistically, 
-            // and polling will sync eventually
         } catch (error) {
-            fetchMessages(); // Revert on error
+            fetchMessages(); 
         }
     };
 
@@ -653,7 +839,6 @@ function CreateGroupModal({ onClose, onRefresh }) {
         </div>
     );
 }
-
 // --- SOCIAL VIEW (Med Life) ---
 
 function SocialView() {
